@@ -32,7 +32,7 @@ export default function Footer() {
         </a>
       </div>
       <p className="text-outline text-sm font-mono mt-4">
-        © 2024 RepoHawk Inc. // System Online.
+        © 2026 RepoHawk Inc.
       </p>
     </footer>
   );

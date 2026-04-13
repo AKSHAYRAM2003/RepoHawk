@@ -5,7 +5,7 @@ import { ThemeToggle } from "../ThemeToggle";
 
 export default function Navbar() {
   return (
-    <div className="sticky top-0 z-50 py-6 px-4 md:px-10 lg:px-20">
+    <nav className="sticky top-0 z-50 w-full px-4 md:px-10 lg:px-20 py-4 transition-all duration-300">
       <header className="flex items-center justify-between whitespace-nowrap px-6 py-4 rounded-2xl bg-surface-container-highest/40 backdrop-blur-md border border-outline-variant/15 shadow-lg">
         <div className="flex items-center gap-1 text-on-surface">
           <div className="h-9 w-auto text-primary">
@@ -64,6 +64,6 @@ export default function Navbar() {
           </button>
         </div>
       </header>
-    </div>
+    </nav>
   );
 }
