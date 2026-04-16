@@ -1,10 +1,14 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import AnalyzeModal from "./AnalyzeModal";
 
 export default function Hero() {
+  const [isAnalyzeModalOpen, setIsAnalyzeModalOpen] = useState(false);
+
   return (
-    <main className="@container mt-6 lg:mt-15 px-4 md:px-10 lg:px-20">
+    <>
+      <main className="@container mt-6 lg:mt-15 px-4 md:px-10 lg:px-20">
       <div className="flex flex-col gap-16 py-10 lg:flex-row lg:items-center">
         {/* Text Content */}
         <div className="flex flex-col gap-8 lg:w-[45%] z-10">
@@ -27,7 +31,10 @@ export default function Hero() {
           </div>
           <div className="flex flex-col sm:flex-row gap-4 mt-2">
             {/* Primary Gradient Liquid Glass CTA */}
-            <button className="flex items-center justify-center rounded-full h-12 px-8 bg-gradient-to-b from-[#4a50c5] to-[#00b08a] text-white text-base font-bold shadow-[0_8px_24px_rgba(74,80,197,0.3),inset_0_2px_1px_rgba(255,255,255,0.4),inset_0_-2px_2px_rgba(0,0,0,0.2)] border border-white/20 hover:shadow-[0_12px_32px_rgba(74,80,197,0.4),inset_0_2px_1px_rgba(255,255,255,0.6),inset_0_-2px_2px_rgba(0,0,0,0.2)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all">
+            <button 
+              onClick={() => setIsAnalyzeModalOpen(true)}
+              className="flex items-center justify-center rounded-full h-12 px-8 bg-gradient-to-b from-[#4a50c5] to-[#00b08a] text-white text-base font-bold shadow-[0_8px_24px_rgba(74,80,197,0.3),inset_0_2px_1px_rgba(255,255,255,0.4),inset_0_-2px_2px_rgba(0,0,0,0.2)] border border-white/20 hover:shadow-[0_12px_32px_rgba(74,80,197,0.4),inset_0_2px_1px_rgba(255,255,255,0.6),inset_0_-2px_2px_rgba(0,0,0,0.2)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all"
+            >
               <span>Analyze My Codebase</span>
             </button>
             {/* Secondary Glass Pill */}
@@ -158,5 +165,11 @@ export default function Hero() {
         </div>
       </div>
     </main>
+
+    <AnalyzeModal 
+      isOpen={isAnalyzeModalOpen} 
+      onClose={() => setIsAnalyzeModalOpen(false)} 
+    />
+    </>
   );
 }
