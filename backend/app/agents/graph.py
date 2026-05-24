@@ -23,7 +23,7 @@ def should_continue_after_critique(state: AnalysisState) -> Literal["architect",
     if state.get("critique_passed", False):
         return "end"
     
-    if state.get("retry_count", 0) >= 3:
+    if state.get("retry_count", 0) >= 1:
         # Stop after 3 retries even if it failed
         return "end"
     

@@ -12,9 +12,8 @@ import json
 import re
 from typing import Dict, Any, List
 from app.agents.state import AnalysisState, ParsedFile, ReactFlowNode, ReactFlowEdge
-from app.core.llm import get_diagram_llm
+from app.core.llm import get_diagram_llm, _invoke_with_retry
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
 
 SYSTEM_PROMPT = """
 You are a Senior Software Architect. Your task is to analyze a codebase's structure and generate a high-level architecture diagram in JSON format compatible with React Flow.
@@ -97,11 +96,9 @@ def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
             ("system", SYSTEM_PROMPT),
             ("user", USER_PROMPT_TEMPLATE)
         ])
-        
-        chain = prompt | llm | JsonOutputParser()
 
-        # 3. Invoke LLM
-        response = chain.invoke({
+        # 3. Invoke LLM with auto-retry on rate limits
+        response = _invoke_with_retry(llm, prompt, {
             "repo_url": repo_url,
             "file_count": len(parsed_files),
             "structure_summary": structure_summary

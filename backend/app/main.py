@@ -1,6 +1,19 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Bootstrap SQLAlchemy models registry to avoid InvalidRequestError
+from app.models.base import Base
+
 from app.api.v1.routers import repos, chat
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("repohawk")
 
 app = FastAPI(title="RepoHawk API", version="1.0.0")
 

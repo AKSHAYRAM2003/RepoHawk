@@ -15,5 +15,5 @@ def get_embeddings():
         model=settings.MODEL_EMBED,
         openai_api_key=settings.OPENROUTER_API_KEY,
         openai_api_base=settings.OPENROUTER_BASE_URL,
-        check_embedding_ctx_length=False, # OpenRouter handling
     )
+

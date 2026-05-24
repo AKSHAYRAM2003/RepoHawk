@@ -1,15 +1,63 @@
 """
 RepoHawk LLM Client
 Central OpenRouter client factory. All agents import from here.
-Supports per-agent model routing via config.
+Supports per-agent model routing via config with automatic retry on rate limits.
 """
 
+import time
+import random
+import logging
 from typing import Optional
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError
 from app.core.config import settings
 
+logger = logging.getLogger("repohawk.llm")
 
-def get_llm(model: Optional[str] = None, temperature: float = 0.2) -> ChatOpenAI:
+
+def _invoke_with_retry(llm: ChatOpenAI, prompt, input_data: dict, max_retries: int = 3):
+    """
+    Invoke an LLM chain with exponential backoff retry on 429 rate limits.
+    Falls back to MODEL_FALLBACK after exhausting retries.
+    """
+    from langchain_core.output_parsers import JsonOutputParser
+
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            chain = prompt | llm | JsonOutputParser()
+            return chain.invoke(input_data)
+        except (RateLimitError, Exception) as e:
+            err_str = str(e).lower()
+            is_rate_limit = isinstance(e, RateLimitError) or "429" in err_str or "rate" in err_str or "too many requests" in err_str
+            if not is_rate_limit:
+                raise
+            last_error = e
+            if attempt < max_retries:
+                wait = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(f"Rate limited (attempt {attempt}/{max_retries}), retrying in {wait:.1f}s...")
+                time.sleep(wait)
+            else:
+                logger.warning(f"Rate limit exhausted after {max_retries} attempts. Trying fallback model...")
+
+    # Fallback: try the fallback model
+    logger.info(f"Falling back to {settings.MODEL_FALLBACK}")
+    fallback_llm = ChatOpenAI(
+        model=settings.MODEL_FALLBACK,
+        openai_api_key=settings.OPENROUTER_API_KEY,
+        openai_api_base=settings.OPENROUTER_BASE_URL,
+        temperature=0.1,
+        timeout=60.0,
+        default_headers={
+            "HTTP-Referer": "https://repohawk.app",
+            "X-Title": "RepoHawk",
+        },
+    )
+    chain = prompt | fallback_llm | JsonOutputParser()
+    return chain.invoke(input_data)
+
+
+def get_llm(model: Optional[str] = None, temperature: float = 0.2, timeout: float = 120.0) -> ChatOpenAI:
     """
     Creates a LangChain ChatOpenAI instance pointed at OpenRouter.
     
@@ -17,6 +65,7 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.2) -> ChatOpenAI
         model: OpenRouter model identifier (e.g. "nvidia/nemotron-3-nano-30b-a3b:free").
                Defaults to MODEL_CHAT from config.
         temperature: LLM temperature. Lower = more deterministic.
+        timeout: Request timeout in seconds. Longer for free tier models.
     
     Returns:
         ChatOpenAI instance ready for .invoke() / .stream()
@@ -26,6 +75,7 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.2) -> ChatOpenAI
         openai_api_key=settings.OPENROUTER_API_KEY,
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=temperature,
+        timeout=timeout,
         default_headers={
             "HTTP-Referer": "https://repohawk.app",
             "X-Title": "RepoHawk",
@@ -40,10 +90,10 @@ def get_chat_llm() -> ChatOpenAI:
 
 
 def get_diagram_llm() -> ChatOpenAI:
-    """Architect Agent — code-specialized (Qwen3 Coder)"""
-    return get_llm(model=settings.MODEL_DIAGRAM, temperature=0.1)
+    """Architect Agent — code-specialized (gpt-oss-120b)"""
+    return get_llm(model=settings.MODEL_DIAGRAM, temperature=0.1, timeout=180.0)
 
 
 def get_critique_llm() -> ChatOpenAI:
     """Critique Agent — strong reasoning (gpt-oss-120b)"""
-    return get_llm(model=settings.MODEL_CRITIQUE, temperature=0.0)
+    return get_llm(model=settings.MODEL_CRITIQUE, temperature=0.0, timeout=120.0)

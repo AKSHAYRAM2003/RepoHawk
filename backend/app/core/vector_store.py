@@ -2,15 +2,18 @@ import chromadb
 from chromadb.config import Settings
 from app.core.config import settings
 
+import os
+
 # Setup Chroma Client
-# Uses HTTP client connecting to docker container at localhost:8000
+# Uses PersistentClient for in-process server-less testing
 def get_chroma_client():
-    client = chromadb.HttpClient(
-        host=settings.CHROMA_HOST,
-        port=settings.CHROMA_PORT,
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "chroma_db")
+    client = chromadb.PersistentClient(
+        path=db_path,
         settings=Settings(allow_reset=True, anonymized_telemetry=False)
     )
     return client
+
 
 # Utility wrapper
 def get_collection(repo_id: str):

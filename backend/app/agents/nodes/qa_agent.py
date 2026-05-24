@@ -49,17 +49,15 @@ def qa_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         # 1. RAG Retrieval
-        embeddings_model = get_embeddings()
-        question_vector = embeddings_model.embed_query(question)
-        
         client = get_chroma_client()
         collection_name = f"repo_{repo_id.replace('-', '_')}"
         collection = client.get_collection(name=collection_name)
         
         results = collection.query(
-            query_embeddings=[question_vector],
+            query_texts=[question],
             n_results=5
         )
+
         
         chunks = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]

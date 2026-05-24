@@ -28,7 +28,7 @@ def validate_github_url(url: str) -> bool:
     Prevents path traversal and non-GitHub URLs.
     """
     pattern = r'^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/?$'
-    return bool(re.match(pattern, url.strip().rstrip('.git')))
+    return bool(re.match(pattern, url.strip().removesuffix('.git')))
 
 
 def get_clone_path(repo_id: str) -> str:

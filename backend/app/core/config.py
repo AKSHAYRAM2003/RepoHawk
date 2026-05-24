@@ -11,11 +11,11 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     
     # Per-agent model selection (swap via .env without code changes)
-    MODEL_CHAT: str = "nvidia/nemotron-3-nano-30b-a3b:free"
-    MODEL_DIAGRAM: str = "qwen/qwen3-coder-480b-a35b:free"
+    MODEL_CHAT: str = "openai/gpt-oss-20b:free"
+    MODEL_DIAGRAM: str = "openai/gpt-oss-120b:free"
     MODEL_CRITIQUE: str = "openai/gpt-oss-120b:free"
     MODEL_EMBED: str = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
-    MODEL_FALLBACK: str = "minimax/minimax-m2.5:free"
+    MODEL_FALLBACK: str = "openai/gpt-oss-20b:free"
     
     # Chroma
     CHROMA_HOST: str = "localhost"
