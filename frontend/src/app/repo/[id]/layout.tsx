@@ -7,12 +7,14 @@ export default function RepoDashboardLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = React.use(params);
+
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-[#0a0a0a] text-slate-900 dark:text-slate-50 overflow-hidden">
       {/* LEFT PANE: Navigation & Context */}
-      <RepoSidebar repoId={params.id} />
+      <RepoSidebar repoId={id} />
 
       {/* CENTER PANE: The Canvas / Logs / Files */}
       <main className="flex-1 relative flex flex-col min-w-0 bg-white dark:bg-[#0f0f11] shadow-inner dark:shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
@@ -20,7 +22,7 @@ export default function RepoDashboardLayout({
       </main>
 
       {/* RIGHT PANE: Intelligence & Properties */}
-      <PropertiesPanel repoId={params.id} />
+      <PropertiesPanel repoId={id} />
     </div>
   );
 }
