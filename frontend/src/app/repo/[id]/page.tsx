@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { 
   Workflow, 
   RefreshCw, 
@@ -227,35 +228,80 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
   }
 
   // Completed - Render the architecture diagram
+  // Show skeleton while diagram loads, then animate in
+  if (diagramLoading || !diagram) {
+    return (
+      <div className="w-full h-full flex flex-col bg-slate-50 dark:bg-[#0a0a0c]">
+        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-[#0f0f13]/50 backdrop-blur-xl shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center text-emerald-500">
+              <Workflow className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="h-4 w-40 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
+              <div className="h-3 w-24 bg-slate-200 dark:bg-slate-800 rounded mt-1.5 animate-pulse" />
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+            <p className="text-sm text-slate-400 font-medium">Loading architecture diagram...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full h-full flex flex-col bg-slate-50 dark:bg-[#0a0a0c]">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="w-full h-full flex flex-col bg-slate-50 dark:bg-[#0a0a0c]"
+    >
       {/* Header bar */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-[#0f0f13]/50 backdrop-blur-xl shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center text-emerald-500">
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
+            className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center text-emerald-500"
+          >
             <Workflow className="w-4 h-4" />
-          </div>
-          <div>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4, delay: 0.3 }}
+          >
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">
               {repo?.name || "Architecture"} — Component Map
             </h2>
             <p className="text-[11px] text-slate-400">
               {diagramNodes.length} components · {diagramEdges.length} relationships
             </p>
-          </div>
+          </motion.div>
         </div>
-        <Link
-          href={`/repo/${id}/logs`}
-          className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex items-center gap-1"
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
         >
-          <Terminal className="w-3.5 h-3.5" />
-          Pipeline Logs
-        </Link>
+          <Link
+            href={`/repo/${id}/logs`}
+            className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex items-center gap-1"
+          >
+            <Terminal className="w-3.5 h-3.5" />
+            Pipeline Logs
+          </Link>
+        </motion.div>
       </div>
       {/* Canvas */}
       <div className="flex-1 min-h-0">
         <DiagramCanvas nodes={diagramNodes} edges={diagramEdges} />
       </div>
-    </div>
+    </motion.div>
   );
 }

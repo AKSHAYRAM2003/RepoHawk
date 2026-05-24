@@ -1,23 +1,54 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { TerminalSquare, RefreshCw, AlertTriangle, CheckCircle, Flame, ArrowLeft } from "lucide-react";
 import { useRepoAnalysis } from "@/hooks/useRepoAnalysis";
 import Link from "next/link";
+
+function LogEntry({ entry, index, isLatest }: { entry: { step: string; log: string; status: string }; index: number; isLatest: boolean }) {
+  let colorClass = "text-slate-300";
+  if (entry.log.startsWith("✅")) {
+    colorClass = "text-emerald-400 font-semibold";
+  } else if (entry.log.startsWith("❌")) {
+    colorClass = "text-rose-400 font-semibold";
+  } else if (entry.log.startsWith("⚠️")) {
+    colorClass = "text-amber-400 font-semibold";
+  } else if (entry.log.startsWith("📡")) {
+    colorClass = "text-blue-400";
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12, height: 0 }}
+      animate={{ opacity: 1, y: 0, height: "auto" }}
+      transition={{ duration: 0.35, ease: "easeOut", delay: index * 0.02 }}
+      className={`flex items-start gap-2 ${colorClass} ${isLatest ? "relative" : ""}`}
+    >
+      <span className="text-slate-600 select-none shrink-0">[{entry.step}]</span>
+      <motion.span
+        initial={isLatest ? { clipPath: "inset(0 100% 0 0)" } : undefined}
+        animate={isLatest ? { clipPath: "inset(0 0% 0 0)" } : undefined}
+        transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
+        className="whitespace-pre-wrap break-all"
+      >
+        {entry.log}
+      </motion.span>
+    </motion.div>
+  );
+}
 
 export default function LogsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
   const { repo, status, logs, currentStep, error, isNotFound, refetch, stopAnalysis } = useRepoAnalysis(id);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll to bottom of logs
   useEffect(() => {
     if (logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs]);
 
-  // Render not found state
   if (isNotFound) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-[url('/grid-pattern.svg')] bg-[length:32px_32px] bg-slate-50 dark:bg-[#0b0b0d]">
@@ -44,26 +75,23 @@ export default function LogsPage({ params }: { params: Promise<{ id: string }> }
 
   const getStepDisplayName = (step: string) => {
     switch (step) {
-      case "git_cloner":
-        return "Cloning codebase...";
-      case "ast_parser":
-        return "Parsing AST & functions...";
-      case "embedder":
-        return "Vectorizing chunks...";
-      case "architect":
-        return "Mapping architecture...";
-      case "critique":
-        return "Reviewing mapping quality...";
-      case "connected":
-        return "Initializing connection...";
-      default:
-        return step;
+      case "git_cloner": return "Cloning codebase...";
+      case "ast_parser": return "Parsing AST & functions...";
+      case "embedder": return "Vectorizing chunks...";
+      case "architect": return "Mapping architecture...";
+      case "critique": return "Reviewing mapping quality...";
+      case "connected": return "Initializing connection...";
+      default: return step;
     }
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#0f0f11] text-slate-100 p-8 font-sans overflow-hidden">
-      
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className="w-full h-full flex flex-col bg-[#0f0f11] text-slate-100 p-8 font-sans overflow-hidden"
+    >
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
         <div className="space-y-1">
@@ -81,7 +109,6 @@ export default function LogsPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Status Badge */}
           {status === "running" && (
             <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse">
               <RefreshCw size={12} className="animate-spin" />
@@ -128,79 +155,97 @@ export default function LogsPage({ params }: { params: Promise<{ id: string }> }
       </div>
 
       {/* Main Terminal Window */}
-      <div className="flex-1 min-h-0 rounded-2xl border border-slate-800 bg-[#060608]/90 shadow-2xl flex flex-col overflow-hidden relative backdrop-blur-xl">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+        className="flex-1 min-h-0 rounded-2xl border border-slate-800 bg-[#060608]/90 shadow-2xl flex flex-col overflow-hidden relative backdrop-blur-xl"
+      >
         {/* Terminal Title Bar */}
         <div className="flex items-center justify-between px-4 py-3 bg-slate-900/50 border-b border-slate-800/80">
           <div className="flex gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-[#ff5f56] shadow-inner opacity-80"></div>
-            <div className="w-3 h-3 rounded-full bg-[#ffbd2e] shadow-inner opacity-80"></div>
-            <div className="w-3 h-3 rounded-full bg-[#27c93f] shadow-inner opacity-80"></div>
+            <div className="w-3 h-3 rounded-full bg-[#ff5f56] shadow-inner opacity-80" />
+            <div className="w-3 h-3 rounded-full bg-[#ffbd2e] shadow-inner opacity-80" />
+            <div className="w-3 h-3 rounded-full bg-[#27c93f] shadow-inner opacity-80" />
           </div>
           <span className="font-mono text-xs text-slate-500 select-none">repohawk-worker.sh</span>
-          <div className="w-12"></div> {/* Spacer */}
+          <div className="w-12" />
         </div>
 
         {/* Terminal Body */}
         <div className="flex-1 overflow-y-auto p-6 font-mono text-[13px] leading-relaxed space-y-3 scrollbar-thin scrollbar-thumb-slate-800">
-          <div className="text-slate-500">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="text-slate-500"
+          >
             [System Log Initialized - {new Date(repo?.created_at || Date.now()).toLocaleTimeString()}]
-          </div>
-          <div className="text-slate-500">
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="text-slate-500"
+          >
             $ repohawk analyze --id={id} --url={repo?.github_url || "Fetching URL..."}
-          </div>
+          </motion.div>
 
-          {logs.map((entry, index) => {
-            let colorClass = "text-slate-300";
-            if (entry.log.startsWith("✅")) {
-              colorClass = "text-emerald-400 font-semibold";
-            } else if (entry.log.startsWith("❌")) {
-              colorClass = "text-rose-400 font-semibold";
-            } else if (entry.log.startsWith("⚠️")) {
-              colorClass = "text-amber-400 font-semibold";
-            } else if (entry.log.startsWith("📡")) {
-              colorClass = "text-blue-400";
-            }
-
-            return (
-              <div key={index} className={`flex items-start gap-2 ${colorClass}`}>
-                <span className="text-slate-600 select-none">[{entry.step}]</span>
-                <span className="whitespace-pre-wrap">{entry.log}</span>
-              </div>
-            );
-          })}
+          <AnimatePresence initial={false}>
+            {logs.map((entry, index) => (
+              <LogEntry
+                key={`${entry.step}-${index}`}
+                entry={entry}
+                index={index}
+                isLatest={index === logs.length - 1 && (status === "running" || status === "queued")}
+              />
+            ))}
+          </AnimatePresence>
 
           {status === "running" && (
-            <div className="flex items-center gap-2 text-blue-400">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 text-blue-400"
+            >
               <span className="text-slate-600 select-none">[{currentStep}]</span>
               <span className="flex items-center gap-2">
                 <RefreshCw size={12} className="animate-spin" />
                 Processing next node in LangGraph pipeline...
               </span>
-            </div>
+            </motion.div>
           )}
 
           {status === "queued" && (
-            <div className="text-slate-400 flex items-center gap-2">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-slate-400 flex items-center gap-2"
+            >
               <span className="text-slate-600 select-none">[queued]</span>
               <span className="flex items-center gap-2 animate-pulse">
                 ⏳ Waiting in queue for an available agent...
               </span>
-            </div>
+            </motion.div>
           )}
 
           {error && (
-            <div className="flex items-start gap-2 text-rose-400 border border-rose-500/20 bg-rose-500/5 p-3 rounded-lg mt-4">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-2 text-rose-400 border border-rose-500/20 bg-rose-500/5 p-3 rounded-lg mt-4"
+            >
               <AlertTriangle className="flex-shrink-0 mt-0.5" size={16} />
               <div>
                 <p className="font-bold">Fatal Pipeline Error:</p>
                 <p className="mt-1">{error}</p>
               </div>
-            </div>
+            </motion.div>
           )}
 
           <div ref={logsEndRef} />
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

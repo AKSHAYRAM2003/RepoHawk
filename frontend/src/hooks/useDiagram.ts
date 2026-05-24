@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface DiagramNode {
   id: string;
@@ -31,6 +31,29 @@ export interface Diagram {
 export function useDiagram(repoId: string) {
   const [diagram, setDiagram] = useState<Diagram | null>(null);
   const [loading, setLoading] = useState(true);
+  const retryRef = useRef(0);
+
+  const fetchDiagram = useCallback(async () => {
+    if (!repoId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/repos/${repoId}/diagrams`);
+      if (!res.ok) {
+        if (res.status !== 404) {
+          console.warn(`Diagram fetch failed: HTTP ${res.status}`);
+        }
+        return null;
+      }
+      const data: Diagram[] = await res.json();
+      return data.length > 0 ? data[0] : null;
+    } catch (err) {
+      console.error("Error fetching diagram:", err);
+      return null;
+    }
+  }, [repoId]);
 
   useEffect(() => {
     if (!repoId) {
@@ -40,30 +63,28 @@ export function useDiagram(repoId: string) {
 
     let cancelled = false;
 
-    async function fetchDiagram() {
-      try {
-        const res = await fetch(`/api/repos/${repoId}/diagrams`);
-        if (!res.ok) {
-          if (res.status !== 404) {
-            console.warn(`Diagram fetch failed: HTTP ${res.status}`);
-          }
-          return;
-        }
-        const data: Diagram[] = await res.json();
-        if (!cancelled && data.length > 0) {
-          setDiagram(data[0]);
-        }
-      } catch (err) {
-        console.error("Error fetching diagram:", err);
-      } finally {
-        if (!cancelled) setLoading(false);
+    async function load() {
+      setLoading(true);
+      let result = await fetchDiagram();
+
+      // Retry once if empty (handles race with pipeline completion)
+      if (!result && retryRef.current < 1) {
+        retryRef.current++;
+        await new Promise((r) => setTimeout(r, 2000));
+        if (cancelled) return;
+        result = await fetchDiagram();
+      }
+
+      if (!cancelled) {
+        setDiagram(result);
+        setLoading(false);
       }
     }
 
-    fetchDiagram();
+    load();
 
     return () => { cancelled = true; };
-  }, [repoId]);
+  }, [repoId, fetchDiagram]);
 
   return { diagram, loading };
 }

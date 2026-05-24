@@ -59,10 +59,11 @@ export function useRepoAnalysis(repoId: string) {
       const currentRepo = await fetchRepoDetails();
       if (!active || !currentRepo) return;
 
-      // Connect to SSE stream if running or queued
+      // Connect to SSE stream for all states (replays history for completed)
       if (
         currentRepo.analysis_status === "queued" ||
-        currentRepo.analysis_status === "running"
+        currentRepo.analysis_status === "running" ||
+        currentRepo.analysis_status === "complete"
       ) {
         connectToStream();
       }
