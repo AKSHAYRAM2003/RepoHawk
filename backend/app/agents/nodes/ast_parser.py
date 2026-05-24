@@ -40,6 +40,18 @@ SKIP_FILES = {
     ".DS_Store", "Thumbs.db",
 }
 
+# Binary/image extensions to skip (LLM cannot read these)
+BINARY_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".svg",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".zip", ".tar", ".gz", ".bz2", ".xz", ".rar", ".7z",
+    ".mp3", ".mp4", ".avi", ".mov", ".wmv", ".flv",
+    ".exe", ".dll", ".so", ".dylib", ".bin",
+    ".pyc", ".pyo", ".pyd",
+    ".o", ".a", ".lib", ".obj",
+}
+
 # Max file size to parse (skip huge generated files)
 MAX_FILE_SIZE_BYTES = 100_000  # 100KB
 
@@ -195,6 +207,12 @@ def ast_parser_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 continue
 
             file_path = os.path.join(dirpath, filename)
+            _, ext = os.path.splitext(filename)
+
+            # Skip binary/image files that LLM cannot read
+            if ext.lower() in BINARY_EXTENSIONS:
+                skipped += 1
+                continue
 
             # Skip oversized files
             try:
