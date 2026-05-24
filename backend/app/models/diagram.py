@@ -13,6 +13,7 @@ class Diagram(Base):
     name = Column(String)
     diagram_type = Column(String) # architecture | module | function | flow
     mermaid_syntax = Column(String)
+    reactflow_json = Column(JSONB)
     confidence_level = Column(String) # high | medium | low
     confidence_file_count = Column(Integer)
     contributing_files = Column(JSONB)

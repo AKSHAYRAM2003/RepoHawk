@@ -5,7 +5,7 @@ from app.core.config import settings
 # Note: Using an async driver string
 DATABASE_URL_ASYNC = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
-engine = create_async_engine(DATABASE_URL_ASYNC, echo=True)
+engine = create_async_engine(DATABASE_URL_ASYNC, echo=False)
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 Base = declarative_base()
