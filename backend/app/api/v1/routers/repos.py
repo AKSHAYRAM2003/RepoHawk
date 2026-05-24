@@ -26,6 +26,7 @@ class RepoResponse(BaseModel):
     name: Optional[str] = None
     analysis_status: str
     created_at: Optional[datetime] = None
+    logs: Optional[list] = None
 
     class Config:
         from_attributes = True
@@ -117,8 +118,9 @@ async def stream_repo_progress(repo_id: uuid.UUID, request: Request, db: AsyncSe
         raise HTTPException(status_code=404, detail="Repo not found")
 
     async def event_generator():
-        # Get progress queue
-        queue = progress_manager.get_queue(str(repo_id))
+        rid = str(repo_id)
+        # Get progress queue (replays history if available)
+        queue = progress_manager.get_queue(rid)
         
         try:
             # Send initial connection event
@@ -131,24 +133,31 @@ async def stream_repo_progress(repo_id: uuid.UUID, request: Request, db: AsyncSe
                 })
             }
 
-            # If repo is already complete, send complete event and return
-            if repo.analysis_status == "complete":
+            # For completed/failed repos, replay persisted logs from DB then close
+            if repo.analysis_status in ("complete", "failed"):
+                # Replay persisted logs from database
+                persisted_logs = repo.logs or []
+                for log_entry in persisted_logs:
+                    yield {
+                        "event": "message",
+                        "data": json.dumps(log_entry)
+                    }
+                # Also drain any in-memory queue events
+                try:
+                    while True:
+                        data = queue.get_nowait()
+                        yield {
+                            "event": "message",
+                            "data": json.dumps(data)
+                        }
+                except asyncio.QueueEmpty:
+                    pass
                 yield {
                     "event": "message",
                     "data": json.dumps({
-                        "step": "pipeline_complete",
-                        "log": "🎉 Analysis already complete!",
-                        "status": "complete"
-                    })
-                }
-                return
-            elif repo.analysis_status == "failed":
-                yield {
-                    "event": "message",
-                    "data": json.dumps({
-                        "step": "pipeline_error",
-                        "log": "❌ Analysis failed.",
-                        "status": "failed"
+                        "step": "pipeline_complete" if repo.analysis_status == "complete" else "pipeline_error",
+                        "log": f"{'🎉' if repo.analysis_status == 'complete' else '❌'} Analysis {repo.analysis_status}.",
+                        "status": repo.analysis_status
                     })
                 }
                 return
@@ -160,7 +169,6 @@ async def stream_repo_progress(repo_id: uuid.UUID, request: Request, db: AsyncSe
 
                 try:
                     # Wait for next update from publisher with a timeout
-                    # using short timeout so we can periodically check client disconnect
                     data = await asyncio.wait_for(queue.get(), timeout=1.0)
                     yield {
                         "event": "message",
@@ -171,13 +179,12 @@ async def stream_repo_progress(repo_id: uuid.UUID, request: Request, db: AsyncSe
                     if data.get("status") in ["complete", "failed"]:
                         break
                 except asyncio.TimeoutError:
-                    # Just send a ping to keep connection alive
                     yield {
                         "event": "ping",
                         "data": ""
                     }
         finally:
-            progress_manager.remove_queue(str(repo_id), queue)
+            progress_manager.remove_queue(rid, queue)
 
     return EventSourceResponse(event_generator())
 

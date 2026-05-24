@@ -59,13 +59,19 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                         for key, val in node_state.items():
                             if key == "progress_log" and val:
                                 final_state["progress_log"].extend(val)
-                                # Publish each log item
+                                # Publish and persist each log item
                                 for log in val:
-                                    progress_manager.publish(str(repo_id), {
+                                    event_data = {
                                         "step": node_name,
                                         "log": log,
                                         "status": "running"
-                                    })
+                                    }
+                                    progress_manager.publish(str(repo_id), event_data)
+                                    # Persist to DB (reassign for SQLAlchemy mutation tracking)
+                                    current_logs = list(repo.logs or [])
+                                    current_logs.append(event_data)
+                                    repo.logs = current_logs
+                                    await db.commit()
                             else:
                                 final_state[key] = val
 
@@ -73,11 +79,16 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                     repo.analysis_status = "failed"
                     await db.commit()
                     # Publish failure status
-                    progress_manager.publish(str(repo_id), {
+                    event_data = {
                         "step": "pipeline_error",
                         "log": f"❌ Analysis failed: {final_state['error']}",
                         "status": "failed"
-                    })
+                    }
+                    progress_manager.publish(str(repo_id), event_data)
+                    current_logs = list(repo.logs or [])
+                    current_logs.append(event_data)
+                    repo.logs = current_logs
+                    await db.commit()
                     return
 
                 # 3. Create Diagram record (defensive: set reactflow_json after creation if needed)
@@ -111,21 +122,30 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 await db.commit()
 
                 # Publish completion status
-                progress_manager.publish(str(repo_id), {
+                final_event = {
                     "step": "pipeline_complete",
                     "log": "🎉 Codebase analysis completed successfully!",
                     "status": "complete"
-                })
+                }
+                progress_manager.publish(str(repo_id), final_event)
+                current_logs = list(repo.logs or [])
+                current_logs.append(final_event)
+                repo.logs = current_logs
+                await db.commit()
 
             except asyncio.CancelledError:
                 # Handle cancellation explicitly
                 repo.analysis_status = "failed"
-                await db.commit()
-                progress_manager.publish(str(repo_id), {
+                cancel_event = {
                     "step": "pipeline_cancelled",
                     "log": "⏹️ Analysis stopped by user.",
                     "status": "failed"
-                })
+                }
+                current_logs = list(repo.logs or [])
+                current_logs.append(cancel_event)
+                repo.logs = current_logs
+                await db.commit()
+                progress_manager.publish(str(repo_id), cancel_event)
                 raise
 
             except Exception as e:
@@ -133,12 +153,16 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 logger.error(f"Analysis failed for {repo.id}: {str(e)}")
                 logger.error(traceback.format_exc())
                 repo.analysis_status = "failed"
-                await db.commit()
-                progress_manager.publish(str(repo_id), {
+                error_event = {
                     "step": "pipeline_error",
                     "log": f"❌ Fatal analysis error: {str(e)}",
                     "status": "failed"
-                })
+                }
+                current_logs = list(repo.logs or [])
+                current_logs.append(error_event)
+                repo.logs = current_logs
+                await db.commit()
+                progress_manager.publish(str(repo_id), error_event)
     finally:
         task_manager.unregister_task(str(repo_id))
 

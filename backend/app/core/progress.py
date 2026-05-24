@@ -3,18 +3,22 @@ from typing import Dict, List
 
 class ProgressManager:
     """
-    A simple in-memory publish-subscribe manager for repo analysis progress.
-    Allows the background analysis worker to publish logs, and the SSE connection
-    to listen to updates for specific repository IDs.
+    Pub-sub manager for repo analysis progress events.
+    Stores event history so reconnecting clients can replay past events.
     """
     def __init__(self):
         self.queues: Dict[str, List[asyncio.Queue]] = {}
+        self.history: Dict[str, List[dict]] = {}
+        self._max_history = 500
 
     def get_queue(self, repo_id: str) -> asyncio.Queue:
         if repo_id not in self.queues:
             self.queues[repo_id] = []
         queue = asyncio.Queue()
         self.queues[repo_id].append(queue)
+        # Replay past events into the new queue
+        for event in self.history.get(repo_id, []):
+            queue.put_nowait(event)
         return queue
 
     def remove_queue(self, repo_id: str, queue: asyncio.Queue):
@@ -25,9 +29,19 @@ class ProgressManager:
                 del self.queues[repo_id]
 
     def publish(self, repo_id: str, data: dict):
+        # Store in history
+        if repo_id not in self.history:
+            self.history[repo_id] = []
+        self.history[repo_id].append(data)
+        # Trim history
+        if len(self.history[repo_id]) > self._max_history:
+            self.history[repo_id] = self.history[repo_id][-self._max_history:]
+
+        # Notify all listeners
         if repo_id in self.queues:
             for queue in self.queues[repo_id]:
                 queue.put_nowait(data)
+
 
 progress_manager = ProgressManager()
 
@@ -56,4 +70,3 @@ class TaskManager:
 
 
 task_manager = TaskManager()
-

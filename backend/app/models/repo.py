@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from app.core.database import Base
@@ -17,6 +17,7 @@ class Repo(Base):
     last_analyzed_at = Column(DateTime)
     file_count = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
+    logs = Column(JSON, default=list)
 
     diagrams = relationship("Diagram", back_populates="repo")
     chat_sessions = relationship("ChatSession", back_populates="repo")
