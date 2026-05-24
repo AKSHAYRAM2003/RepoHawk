@@ -2,11 +2,20 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
+export interface ArchNodeData {
+  label: string;
+  layer?: string;
+  group?: string;
+  type?: string;
+  description?: string;
+  tech?: string;
+}
+
 export interface DiagramNode {
   id: string;
   type?: string;
   position: { x: number; y: number };
-  data: { label: string };
+  data: ArchNodeData;
 }
 
 export interface DiagramEdge {
@@ -16,6 +25,7 @@ export interface DiagramEdge {
   type?: string;
   animated?: boolean;
   label?: string;
+  relation?: string;
 }
 
 export interface Diagram {
@@ -34,19 +44,10 @@ export function useDiagram(repoId: string) {
   const retryRef = useRef(0);
 
   const fetchDiagram = useCallback(async () => {
-    if (!repoId) {
-      setLoading(false);
-      return;
-    }
-
+    if (!repoId) return null;
     try {
       const res = await fetch(`/api/repos/${repoId}/diagrams`);
-      if (!res.ok) {
-        if (res.status !== 404) {
-          console.warn(`Diagram fetch failed: HTTP ${res.status}`);
-        }
-        return null;
-      }
+      if (!res.ok) return null;
       const data: Diagram[] = await res.json();
       return data.length > 0 ? data[0] : null;
     } catch (err) {
@@ -56,33 +57,22 @@ export function useDiagram(repoId: string) {
   }, [repoId]);
 
   useEffect(() => {
-    if (!repoId) {
-      setLoading(false);
-      return;
-    }
-
+    if (!repoId) { setLoading(false); return; }
     let cancelled = false;
 
     async function load() {
       setLoading(true);
       let result = await fetchDiagram();
-
-      // Retry once if empty (handles race with pipeline completion)
       if (!result && retryRef.current < 1) {
         retryRef.current++;
         await new Promise((r) => setTimeout(r, 2000));
         if (cancelled) return;
         result = await fetchDiagram();
       }
-
-      if (!cancelled) {
-        setDiagram(result);
-        setLoading(false);
-      }
+      if (!cancelled) { setDiagram(result); setLoading(false); }
     }
 
     load();
-
     return () => { cancelled = true; };
   }, [repoId, fetchDiagram]);
 

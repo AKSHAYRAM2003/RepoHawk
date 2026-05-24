@@ -1,6 +1,37 @@
 "use client";
 
 import { useMemo } from "react";
+import type { DiagramNode, DiagramEdge } from "@/hooks/useDiagram";
+import LayeredArchitecture from "./LayeredArchitecture";
+
+/**
+ * DiagramCanvas auto-detects the data format:
+ * - If nodes have `data.layer` → use LayeredArchitecture (AWS-style)
+ * - Otherwise → use ClassicDiagram (simple dagre layout)
+ */
+export default function DiagramCanvas({
+  nodes,
+  edges,
+}: {
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+}) {
+  const hasLayerData = useMemo(
+    () => nodes.some((n) => n.data?.layer),
+    [nodes]
+  );
+
+  if (hasLayerData) {
+    return <LayeredArchitecture nodes={nodes} edges={edges} />;
+  }
+
+  // Fallback to old classic diagram
+  return <ClassicDiagram nodes={nodes} edges={edges} />;
+}
+
+// ------------------------------------------------------------------
+// Classic fallback (simple dagre layout, no layers)
+// ------------------------------------------------------------------
 import {
   ReactFlow,
   Background,
@@ -16,159 +47,87 @@ import {
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import { motion } from "framer-motion";
-import type { DiagramEdge, DiagramNode } from "@/hooks/useDiagram";
 
-const nodeWidth = 220;
-const nodeHeight = 72;
+const nodeWidth = 200;
+const nodeHeight = 60;
 
-const NODE_COLORS = [
-  { bg: "from-indigo-500/10 to-indigo-600/5", border: "border-indigo-500/30", accent: "bg-indigo-500", text: "text-indigo-400" },
-  { bg: "from-emerald-500/10 to-emerald-600/5", border: "border-emerald-500/30", accent: "bg-emerald-500", text: "text-emerald-400" },
-  { bg: "from-violet-500/10 to-violet-600/5", border: "border-violet-500/30", accent: "bg-violet-500", text: "text-violet-400" },
-  { bg: "from-amber-500/10 to-amber-600/5", border: "border-amber-500/30", accent: "bg-amber-500", text: "text-amber-400" },
-  { bg: "from-rose-500/10 to-rose-600/5", border: "border-rose-500/30", accent: "bg-rose-500", text: "text-rose-400" },
-  { bg: "from-cyan-500/10 to-cyan-600/5", border: "border-cyan-500/30", accent: "bg-cyan-500", text: "text-cyan-400" },
+const ACCENT_COLORS = [
+  { bg: "from-indigo-500/10 to-indigo-600/5", border: "border-indigo-500/30", dot: "bg-indigo-500" },
+  { bg: "from-emerald-500/10 to-emerald-600/5", border: "border-emerald-500/30", dot: "bg-emerald-500" },
+  { bg: "from-violet-500/10 to-violet-600/5", border: "border-violet-500/30", dot: "bg-violet-500" },
+  { bg: "from-amber-500/10 to-amber-600/5", border: "border-amber-500/30", dot: "bg-amber-500" },
+  { bg: "from-rose-500/10 to-rose-600/5", border: "border-rose-500/30", dot: "bg-rose-500" },
+  { bg: "from-cyan-500/10 to-cyan-600/5", border: "border-cyan-500/30", dot: "bg-cyan-500" },
 ];
 
-function getNodeStyle(index: number) {
-  return NODE_COLORS[index % NODE_COLORS.length];
-}
-
-function layoutNodes(nodes: DiagramNode[], edges: DiagramEdge[]) {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 120, marginx: 40, marginy: 40 });
-
-  nodes.forEach((n) => g.setNode(n.id, { width: nodeWidth, height: nodeHeight }));
-  edges.forEach((e) => g.setEdge(e.source, e.target));
-
-  dagre.layout(g);
-
-  return nodes.map((n, i) => {
-    const pos = g.node(n.id);
-    return {
-      ...n,
-      position: {
-        x: pos.x - nodeWidth / 2,
-        y: pos.y - nodeHeight / 2,
-      },
-      data: { ...n.data, _index: i },
-    };
-  });
-}
-
-function CustomNode({ data }: NodeProps) {
+function ClassicNode({ data }: NodeProps) {
   const label = data.label as string;
-  const idx = (data as any)._index as number ?? 0;
-  const style = getNodeStyle(idx);
+  const idx = ((data as any)._index as number) ?? 0;
+  const c = ACCENT_COLORS[idx % ACCENT_COLORS.length];
   const name = label.includes(".") ? label.split(".").pop()! : label;
-  const module = label.includes(".") ? label.split(".")[0] : "";
+  const mod = label.includes(".") ? label.split(".")[0] : "";
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.5, y: 20 }}
+      initial={{ opacity: 0, scale: 0.7, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94], delay: idx * 0.04 }}
-      className={`relative px-4 py-3 rounded-2xl bg-gradient-to-br ${style.bg} border ${style.border} shadow-lg shadow-black/10 dark:shadow-black/30 backdrop-blur-sm min-w-[200px]`}
+      transition={{ duration: 0.35, delay: idx * 0.03 }}
+      className={`px-4 py-3 rounded-2xl bg-gradient-to-br ${c.bg} border ${c.border} shadow-md backdrop-blur-sm min-w-[180px]`}
     >
-      <Handle type="target" position={Position.Left} className={`!w-2.5 !h-2.5 !border-2 !border-slate-800 ${style.accent}`} />
-      <div className="flex items-center gap-2.5">
-        <div className={`w-2 h-2 rounded-full ${style.accent} shadow-lg ${style.accent.replace("bg-", "shadow-")}/50`} />
+      <Handle type="target" position={Position.Top} className="!w-2 !h-2 !border-2 !border-slate-800 !bg-indigo-500" />
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${c.dot} shadow-lg`} />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-slate-100 truncate leading-tight">
-            {name}
-          </div>
-          {module && (
-            <div className="text-[10px] font-mono text-slate-500 truncate mt-0.5">
-              {module}
-            </div>
-          )}
+          <div className="text-sm font-bold text-slate-100 truncate">{name}</div>
+          {mod && <div className="text-[10px] font-mono text-slate-500 truncate">{mod}</div>}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className={`!w-2.5 !h-2.5 !border-2 !border-slate-800 ${style.accent}`} />
+      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !border-2 !border-slate-800 !bg-indigo-500" />
     </motion.div>
   );
 }
 
-const nodeTypes = { custom: CustomNode };
+const classicNodeTypes = { classic: ClassicNode };
 
-const edgeAnimationStyles = `
-@keyframes dashDraw {
-  to { stroke-dashoffset: 0; }
-}
-.react-flow__edge-path {
-  stroke-dasharray: 2000;
-  stroke-dashoffset: 2000;
-  animation: dashDraw 0.8s ease-out forwards;
-}
-.react-flow__edge:hover .react-flow__edge-path {
-  filter: brightness(1.3);
-}
+const edgeAnimCSS = `
+@keyframes dash { to { stroke-dashoffset: 0; } }
+.react-flow__edge-path { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: dash 0.6s ease-out forwards; }
 `;
 
-export default function DiagramCanvas({
-  nodes: rawNodes,
-  edges: rawEdges,
-}: {
-  nodes: DiagramNode[];
-  edges: DiagramEdge[];
-}) {
-  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(() => {
-    const nodes = layoutNodes(rawNodes, rawEdges);
-    const animatedNodes = nodes.map((n) => ({ ...n, type: "custom" }));
-    const animatedEdges = rawEdges.map((e, i) => ({
+function ClassicDiagram({ nodes: rawNodes, edges: rawEdges }: { nodes: DiagramNode[]; edges: DiagramEdge[] }) {
+  const { nodes: layouted, edges: styled } = useMemo(() => {
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({ rankdir: "TB", nodesep: 40, ranksep: 70 });
+    rawNodes.forEach((n) => g.setNode(n.id, { width: nodeWidth, height: nodeHeight }));
+    rawEdges.forEach((e) => g.setEdge(e.source, e.target));
+    dagre.layout(g);
+
+    const nodes = rawNodes.map((n, i) => {
+      const pos = g.node(n.id);
+      return { ...n, position: { x: pos.x - nodeWidth / 2, y: pos.y - nodeHeight / 2 }, type: "classic", data: { ...n.data, _index: i } };
+    });
+    const edges = rawEdges.map((e, i) => ({
       ...e,
-      type: "smoothstep",
+      type: "smoothstep" as const,
       animated: true,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 24, height: 24, color: "#6366f1" },
-      style: {
-        stroke: "#6366f1",
-        strokeWidth: 2,
-        strokeDasharray: "2000",
-        strokeDashoffset: "2000",
-        animation: `dashDraw 0.7s ease-out ${0.2 + i * 0.05}s forwards`,
-      },
-      labelStyle: { fill: "#94a3b8", fontSize: 10, fontWeight: 500 },
-      labelBgStyle: { fill: "#0f0f13", fillOpacity: 0.8 },
-      labelBgPadding: [6, 3] as [number, number],
-      labelBgBorderRadius: 4,
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
+      style: { stroke: "#6366f1", strokeWidth: 2, strokeDasharray: "2000", strokeDashoffset: "2000", animation: `dash 0.6s ease-out ${0.1 + i * 0.04}s forwards` },
+      labelStyle: { fill: "#94a3b8", fontSize: 10 },
     }));
-    return { nodes: animatedNodes, edges: animatedEdges };
+    return { nodes, edges };
   }, [rawNodes, rawEdges]);
 
-  const [nodesState, , onNodesChange] = useNodesState(layoutedNodes);
-  const [edgesState, , onEdgesChange] = useEdgesState(layoutedEdges);
+  const [ns, , onNodesChange] = useNodesState(layouted);
+  const [es, , onEdgesChange] = useEdgesState(styled);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="w-full h-full"
-    >
-      <style>{edgeAnimationStyles}</style>
-      <ReactFlow
-        nodes={nodesState}
-        edges={edgesState}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        attributionPosition="bottom-left"
-        colorMode="dark"
-        minZoom={0.3}
-        maxZoom={2}
-      >
-        <Background color="#1e293b" gap={24} size={1} />
-        <Controls showInteractive={false} className="!bg-[#18181b] !border-slate-800 !rounded-xl !shadow-xl [&_button]:!border-slate-700 [&_button]:!text-slate-400 [&_button]:!bg-transparent [&_button:hover]:!bg-slate-800" />
-        <MiniMap
-          nodeStrokeColor="#6366f1"
-          nodeColor="#1e293b"
-          nodeBorderRadius={10}
-          maskColor="rgba(0,0,0,0.6)"
-          style={{ background: "#0f0f13", border: "1px solid #1e293b", borderRadius: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.4)" }}
-        />
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full h-full">
+      <style>{edgeAnimCSS}</style>
+      <ReactFlow nodes={ns} edges={es} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={classicNodeTypes} fitView attributionPosition="bottom-left" colorMode="dark">
+        <Background color="#1e293b" gap={20} />
+        <Controls className="!bg-[#18181b] !border-slate-800 !rounded-xl" />
+        <MiniMap nodeStrokeColor="#6366f1" nodeColor="#1e293b" nodeBorderRadius={8} style={{ background: "#0f0f13", border: "1px solid #1e293b", borderRadius: 12 }} />
       </ReactFlow>
     </motion.div>
   );
