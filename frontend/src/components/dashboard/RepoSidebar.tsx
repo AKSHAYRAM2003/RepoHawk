@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
@@ -12,28 +12,76 @@ import {
   TerminalSquare, 
   Settings, 
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  Plus
 } from "lucide-react";
 
 interface RepoSidebarProps {
-  repoId: string;
+  repoId?: string;
+}
+
+interface SubMenuItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
+interface MenuItem {
+  name: string;
+  href?: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  external?: boolean;
+  action?: string;
+  subItems?: SubMenuItem[];
+}
+
+interface MenuGroup {
+  section: string;
+  items: MenuItem[];
 }
 
 export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMyReposOpen, setIsMyReposOpen] = useState(true);
+  const [activeRepoId, setActiveRepoId] = useState<string | undefined>(repoId);
 
-  const menuItems = [
+  // Sync or retrieve last active repository ID from local storage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (repoId) {
+        localStorage.setItem("repohawk_last_active_repo", repoId);
+        setActiveRepoId(repoId);
+      } else {
+        const lastId = localStorage.getItem("repohawk_last_active_repo");
+        if (lastId) {
+          setActiveRepoId(lastId);
+        }
+      }
+    }
+  }, [repoId]);
+
+  const menuItems: MenuGroup[] = [
     { section: "Overview", items: [
-      { name: "My Repositories", href: "/dashboard", icon: FolderGit2, external: true },
+      { 
+        name: "My Repositories", 
+        icon: FolderGit2,
+        subItems: [
+          { name: "Dashboard", href: "/dashboard", icon: FolderGit2 },
+          { name: "New Repo", href: "/new-repo", icon: Plus }
+        ]
+      },
       { name: "Global Search", href: "#", icon: Search, action: "cmd-k" }
     ]},
-    { section: "Analysis Context", items: [
-      { name: "Architecture Canvas", href: `/repo/${repoId}`, icon: Map },
-      { name: "Source Files", href: `/repo/${repoId}/files`, icon: FileCode2 },
-      { name: "Dependencies", href: `/repo/${repoId}/dependencies`, icon: PackageCheck },
-      { name: "Pipeline Logs", href: `/repo/${repoId}/logs`, icon: TerminalSquare }
-    ]},
+    {
+      section: "Analysis Context", items: [
+        { name: "Architecture Canvas", href: activeRepoId ? `/repo/${activeRepoId}` : undefined, icon: Map },
+        { name: "Source Files", href: activeRepoId ? `/repo/${activeRepoId}/files` : undefined, icon: FileCode2 },
+        { name: "Dependencies", href: activeRepoId ? `/repo/${activeRepoId}/dependencies` : undefined, icon: PackageCheck },
+        { name: "Pipeline Logs", href: activeRepoId ? `/repo/${activeRepoId}/logs` : undefined, icon: TerminalSquare }
+      ]
+    },
     { section: "Utilities", items: [
       { name: "Settings", href: `/settings`, icon: Settings, external: true }
     ]}
@@ -70,10 +118,91 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
               )}
               <ul className="space-y-1">
                 {group.items.map((item, iIdx) => {
-                  // Determine exactly active or not (ignoring external links like /dashboard from /repo/xxx)
-                  const isActive = !item.external && pathname === item.href;
                   const Icon = item.icon;
+                  const isDisabled = !item.href && !item.action;
 
+                  if (item.subItems) {
+                    if (isCollapsed) {
+                      // Collapsed view: Render sub-items directly
+                      return item.subItems.map((sub, sIdx) => {
+                        const isSubActive = pathname === sub.href;
+                        const SubIcon = sub.icon;
+                        return (
+                          <li key={`sub-col-${sIdx}`}>
+                            <Link href={sub.href}>
+                              <div 
+                                title={sub.name}
+                                className={`flex items-center justify-center py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                  isSubActive 
+                                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' 
+                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                                }`}
+                              >
+                                <SubIcon size={18} className="flex-shrink-0" />
+                              </div>
+                            </Link>
+                          </li>
+                        );
+                      });
+                    }
+
+                    // Expanded view: Accordion dropdown
+                    return (
+                      <li key={iIdx} className="space-y-1">
+                        <button 
+                          onClick={() => setIsMyReposOpen(!isMyReposOpen)}
+                          className="w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400"
+                        >
+                          <Icon size={18} className="flex-shrink-0 text-slate-500" />
+                          <span className="ml-3 truncate">{item.name}</span>
+                          <span className="ml-auto">
+                            {isMyReposOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </span>
+                        </button>
+                        
+                        {isMyReposOpen && (
+                          <ul className="pl-4 space-y-1 border-l border-slate-200 dark:border-slate-800/80 ml-5">
+                            {item.subItems.map((sub, sIdx) => {
+                              const isSubActive = pathname === sub.href;
+                              const SubIcon = sub.icon;
+                              return (
+                                <li key={sIdx}>
+                                  <Link href={sub.href}>
+                                    <div className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-205 ${
+                                      isSubActive 
+                                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' 
+                                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                                    }`}>
+                                      <SubIcon size={14} className="flex-shrink-0" />
+                                      <span className="ml-2.5 truncate">{sub.name}</span>
+                                    </div>
+                                  </Link>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  }
+
+                  // Disabled item logic
+                  if (isDisabled) {
+                    return (
+                      <li key={iIdx}>
+                        <div 
+                          title="Select a workspace repository to access analysis context."
+                          className={`flex items-center ${isCollapsed ? 'justify-center px-0' : 'px-3'} py-2 rounded-lg text-sm font-medium opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-600`}
+                        >
+                          <Icon size={18} className="flex-shrink-0" />
+                          {!isCollapsed && <span className="ml-3 truncate">{item.name}</span>}
+                        </div>
+                      </li>
+                    );
+                  }
+
+                  // Normal active items
+                  const isActive = !item.external && item.href && pathname === item.href;
                   return (
                     <li key={iIdx}>
                       {item.action ? (
@@ -82,7 +211,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                           {!isCollapsed && <span className="ml-3 truncate">{item.name}</span>}
                         </button>
                       ) : (
-                        <Link href={item.href}>
+                        <Link href={item.href || "#"}>
                           <div className={`flex items-center ${isCollapsed ? 'justify-center px-0' : 'px-3'} py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                             isActive 
                               ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' 

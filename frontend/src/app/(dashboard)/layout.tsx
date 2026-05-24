@@ -1,18 +1,14 @@
 import { ReactNode } from "react";
+import RepoSidebar from "@/components/dashboard/RepoSidebar";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-50">
-      {/* Sidebar Placeholder */}
-      <aside className="w-64 border-r border-slate-800 bg-slate-950 p-4">
-        <div className="text-xl font-bold tracking-tighter text-blue-500 mb-8">RepoHawk</div>
-        <nav className="space-y-2">
-          <a href="/dashboard" className="block p-2 rounded hover:bg-slate-900 transition-colors">Dashboard</a>
-        </nav>
-      </aside>
+    <div className="flex h-screen w-full bg-slate-50 dark:bg-[#0a0a0a] text-slate-900 dark:text-slate-50 overflow-hidden">
+      {/* LEFT PANE: Navigation & Context */}
+      <RepoSidebar />
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative overflow-hidden">
+      {/* CENTER PANE: The Dashboard/Form Content */}
+      <main className="flex-1 relative flex flex-col min-w-0 bg-white dark:bg-[#0f0f11] shadow-inner dark:shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
         {children}
       </main>
     </div>

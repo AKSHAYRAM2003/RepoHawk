@@ -18,6 +18,7 @@ export default function AnalyzeModal({ isOpen, onClose }: AnalyzeModalProps) {
   const [activeTab, setActiveTab] = useState<"url" | "upload">("url");
   const [animState, setAnimState] = useState<"closed" | "opening" | "open" | "closing">("closed");
   const [mounted, setMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -74,13 +75,35 @@ export default function AnalyzeModal({ isOpen, onClose }: AnalyzeModalProps) {
     const file = e.target.files?.[0]; if (file) handleFile(file);
   };
 
-  const handleAnalyze = (e: React.FormEvent) => {
+  const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (activeTab === "url" && repoUrl) router.push(`/repo/demo?url=${encodeURIComponent(repoUrl)}`);
-    else if (activeTab === "upload" && uploadedFile) router.push(`/repo/demo?file=${encodeURIComponent(uploadedFile.name)}`);
+    if (isLoading) return;
+
+    if (activeTab === "url" && repoUrl) {
+      setIsLoading(true);
+      try {
+        const res = await fetch("/api/repos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ github_url: repoUrl }),
+        });
+        if (!res.ok) {
+          throw new Error("Failed to start analysis");
+        }
+        const data = await res.json();
+        router.push(`/repo/${data.id}`);
+        onClose();
+      } catch (err: any) {
+        alert(err.message || "Something went wrong starting the analysis.");
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (activeTab === "upload" && uploadedFile) {
+      alert("Local uploads are not supported yet. Please paste a public GitHub repository URL.");
+    }
   };
 
-  const canSubmit = (activeTab === "url" && repoUrl.length > 0) || (activeTab === "upload" && uploadedFile !== null);
+  const canSubmit = ((activeTab === "url" && repoUrl.length > 0) || (activeTab === "upload" && uploadedFile !== null)) && !isLoading;
   const formatFileSize = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
   if (animState === "closed" || !mounted) return null;
@@ -362,8 +385,8 @@ export default function AnalyzeModal({ isOpen, onClose }: AnalyzeModalProps) {
               onMouseDown={e => { if (canSubmit) e.currentTarget.style.transform = "scale(0.98)"; }}
               onMouseUp={e => { if (canSubmit) e.currentTarget.style.transform = "translateY(-2px)"; }}
             >
-              <span>Run RepoHawk</span>
-              <span style={{ fontSize: 20 }}>→</span>
+              <span>{isLoading ? "Launching RepoHawk..." : "Run RepoHawk"}</span>
+              {!isLoading && <span style={{ fontSize: 20 }}>→</span>}
             </button>
           </form>
         </div>
@@ -371,5 +394,5 @@ export default function AnalyzeModal({ isOpen, onClose }: AnalyzeModalProps) {
     </div>
   );
 
-  return createPortal(modalContent, document.body);
+  return mounted ? createPortal(modalContent, document.body) : null;
 }
