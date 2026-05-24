@@ -15,18 +15,30 @@ from app.core.config import settings
 logger = logging.getLogger("repohawk.llm")
 
 
-def _invoke_with_retry(llm: ChatOpenAI, prompt, input_data: dict, max_retries: int = 3):
+def _invoke_with_retry(llm: ChatOpenAI, prompt_or_messages, input_data: dict = None, max_retries: int = 3):
     """
-    Invoke an LLM chain with exponential backoff retry on 429 rate limits.
+    Invoke an LLM with exponential backoff retry on 429 rate limits.
     Falls back to MODEL_FALLBACK after exhausting retries.
+
+    Accepts either:
+    - A LangChain prompt template + input_data dict
+    - A list of BaseMessage (invoke directly, input_data ignored)
     """
     from langchain_core.output_parsers import JsonOutputParser
+    from langchain_core.messages import BaseMessage
+
+    def _invoke(llm_instance):
+        if isinstance(prompt_or_messages, list) and all(isinstance(m, BaseMessage) for m in prompt_or_messages):
+            result = llm_instance.invoke(prompt_or_messages)
+            return JsonOutputParser().parse(result.content)
+        else:
+            chain = prompt_or_messages | llm_instance | JsonOutputParser()
+            return chain.invoke(input_data or {})
 
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
-            chain = prompt | llm | JsonOutputParser()
-            return chain.invoke(input_data)
+            return _invoke(llm)
         except (RateLimitError, Exception) as e:
             err_str = str(e).lower()
             is_rate_limit = isinstance(e, RateLimitError) or "429" in err_str or "rate" in err_str or "too many requests" in err_str
@@ -53,8 +65,7 @@ def _invoke_with_retry(llm: ChatOpenAI, prompt, input_data: dict, max_retries: i
             "X-Title": "RepoHawk",
         },
     )
-    chain = prompt | fallback_llm | JsonOutputParser()
-    return chain.invoke(input_data)
+    return _invoke(fallback_llm)
 
 
 def get_llm(model: Optional[str] = None, temperature: float = 0.2, timeout: float = 120.0) -> ChatOpenAI:
