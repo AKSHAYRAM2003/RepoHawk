@@ -12,7 +12,7 @@ const RELATION_COLORS: Record<string, string> = {
   "data-flow":    "#10b981",
   "control-flow": "#6366f1",
   "build-dep":    "#64748b",
-  default:        "#475569",
+  default:        "#6366f1",
 };
 
 const RELATION_DASH: Record<string, string | undefined> = {
@@ -40,21 +40,33 @@ export default memo(function AwsFlowEdge({
   const dash     = RELATION_DASH[relation];
   const isDataFlow = relation === "data-flow";
 
+  // Fan-out offsets: spread multiple edges entering/leaving the same node
+  // so they don't all pile on the exact same point and overlap each other
+  const sOffY = (data as any)?.sourceOffsetY ?? 0;
+  const tOffY = (data as any)?.targetOffsetY ?? 0;
+
   // Smooth-step with borderRadius:0 → perfectly straight elbows (right-angle corners)
+  // Apply the fan-out offsets to shift each edge's Y start/end point
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX,
-    sourceY,
+    sourceY: sourceY + sOffY,
     sourcePosition,
     targetX,
-    targetY,
+    targetY: targetY + tOffY,
     targetPosition,
     borderRadius: 0,
     offset: 50,
   });
 
-  // Only show label if there's actual text and the edge is long enough to warrant it
+  // Only show label if there's actual text
   const edgeLabel = label as string | undefined;
   const showLabel = !!edgeLabel && edgeLabel.trim().length > 0;
+
+  // Use explicitly pre-computed corridor position if provided (avoids card/label overlap).
+  // Falls back to getSmoothStepPath midpoint only if labelPos is absent.
+  const explicitPos = (data as any)?.labelPos as { x: number; y: number } | undefined;
+  const finalLabelX = explicitPos?.x ?? labelX;
+  const finalLabelY = explicitPos?.y ?? labelY;
 
   return (
     <>
@@ -64,10 +76,12 @@ export default memo(function AwsFlowEdge({
         markerEnd={markerEnd}
         style={{
           stroke: color,
-          strokeWidth: isDataFlow ? 2 : 1.5,
+          strokeWidth: isDataFlow ? 2.5 : 2,
           strokeDasharray: dash,
-          // Edges should render below node cards — controlled by zIndex on edge definition
+          // Spread parent style first, then force opacity=1 last
+          // so nothing can override it (e.g. React Flow dimming on search)
           ...style,
+          opacity: 1,
         }}
       />
 
@@ -86,7 +100,7 @@ export default memo(function AwsFlowEdge({
           <div
             style={{
               position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              transform: `translate(-50%, -50%) translate(${finalLabelX}px,${finalLabelY}px)`,
               pointerEvents: "none",
               display: "flex",
               alignItems: "center",

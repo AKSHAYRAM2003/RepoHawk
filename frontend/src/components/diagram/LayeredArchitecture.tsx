@@ -79,6 +79,12 @@ function buildLayout(rawNodes: DiagramNode[], rawEdges: DiagramEdge[]) {
   const resultNodes: Node[] = [];
   let currentX = 16;
 
+  // ── Label placement support ────────────────────────────────────────────────
+  // nodePositions: absolute canvas {x,y} of each archNode (top-left corner)
+  // nodeCorridorX: centerX of the inter-column gap immediately after each node
+  const nodePositions = new Map<string, { x: number; y: number }>();
+  const nodeCorridorX = new Map<string, number>();
+
   for (const layerName of orderedLayers) {
     const layerNodes = byLayer.get(layerName)!;
     const cfg = LAYER_CONFIG[layerName] ?? LAYER_CONFIG["core-services"];
@@ -134,15 +140,20 @@ function buildLayout(rawNodes: DiagramNode[], rawEdges: DiagramEdge[]) {
     //  making zIndex:20 lose to edges at zIndex:5. Without parentId, zIndex:20
     //  wins globally → cards appear ABOVE edges → lines hidden behind cards.
     //
+    // Center X of the gap/corridor immediately after this column — used for label placement
+    const nextCorridorX = currentX + layerW + COL_GAP / 2;
     layerNodes.forEach((n, i) => {
+      const pos = {
+        x: currentX + LAYER_PAD_X,
+        y: CANVAS_TOP + LAYER_PAD_TOP + i * (NODE_H + ROW_GAP),
+      };
+      nodePositions.set(n.id, pos);
+      nodeCorridorX.set(n.id, nextCorridorX);
       resultNodes.push({
         ...n,
         type: "archNode",
         // NO parentId — absolute canvas position for global z-index to work
-        position: {
-          x: currentX + LAYER_PAD_X,
-          y: CANVAS_TOP + LAYER_PAD_TOP + i * (NODE_H + ROW_GAP),
-        },
+        position: pos,
         draggable: false,
         style: { width: NODE_W, height: NODE_H },
         zIndex: 20,  // ABOVE edges (5) — card blocks the line visually ✓
@@ -152,36 +163,118 @@ function buildLayout(rawNodes: DiagramNode[], rawEdges: DiagramEdge[]) {
     currentX += layerW + COL_GAP;
   }
 
+  // ── Label slot allocator ───────────────────────────────────────────────────
+  // Labels are placed in the inter-column corridor after the source node.
+  // claimLabelY() ensures each label in a corridor gets a unique Y slot so
+  // labels never overlap each other OR land on top of node cards.
+  const LABEL_SLOT_H = 30; // label height (≈18px) + 12px breathing room
+  const corridorSlots = new Map<number, number[]>(); // corrX → [used Y values]
+
+  function claimLabelY(corrX: number, desiredY: number): number {
+    if (!corridorSlots.has(corrX)) corridorSlots.set(corrX, []);
+    const slots = corridorSlots.get(corrX)!;
+    // Try desired Y first, then alternate above/below expanding outward
+    let y = desiredY;
+    let step = LABEL_SLOT_H;
+    let flip = 1;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (slots.every((sy) => Math.abs(sy - y) >= LABEL_SLOT_H)) {
+        slots.push(y);
+        return y;
+      }
+      y = desiredY + flip * step;
+      flip = -flip;
+      if (flip === 1) step += LABEL_SLOT_H;
+    }
+    const fallback = desiredY + slots.length * LABEL_SLOT_H;
+    slots.push(fallback);
+    return fallback;
+  }
+
   // ── Edges (zIndex: 5) ─────────────────────────────────────────────────────
   // Above group containers (0) → visible passing through big boxes
   // Below individual cards (20)  → hidden behind small cards
+  //
+  // MULTI-EDGE OFFSET: When multiple edges arrive at / leave from the same
+  // node handle, they would all share the exact same point and overlap.
+  // We fix this by spreading them across evenly-spaced lanes within the
+  // card height, passed as `sourceOffsetY` / `targetOffsetY` in data.
+  //
+  const incomingEdges  = new Map<string, number>();
+  const outgoingEdges  = new Map<string, number>();
+  const incomingTotal  = new Map<string, number>();
+  const outgoingTotal  = new Map<string, number>();
+
+  for (const e of rawEdges) {
+    incomingTotal.set(e.target, (incomingTotal.get(e.target) ?? 0) + 1);
+    outgoingTotal.set(e.source, (outgoingTotal.get(e.source) ?? 0) + 1);
+  }
+
   const resultEdges: Edge[] = rawEdges.map((e, i) => {
     const relation   = e.relation ?? "control-flow";
     const isDataFlow = relation === "data-flow";
     const isBuildDep = relation === "build-dep";
     const color      = isDataFlow ? "#10b981" : isBuildDep ? "#64748b" : "#6366f1";
 
+    // ── Fan-out offsets: spread multiple edges per handle vertically ──────
+    const tTotal = incomingTotal.get(e.target) ?? 1;
+    const tIdx   = incomingEdges.get(e.target) ?? 0;
+    incomingEdges.set(e.target, tIdx + 1);
+
+    const sTotal = outgoingTotal.get(e.source) ?? 1;
+    const sIdx   = outgoingEdges.get(e.source) ?? 0;
+    outgoingEdges.set(e.source, sIdx + 1);
+
+    const laneH   = NODE_H - 40;  // 72px usable height within the card
+    const tOffset = tTotal <= 1 ? 0 : (tIdx / (tTotal - 1) - 0.5) * laneH;
+    const sOffset = sTotal <= 1 ? 0 : (sIdx / (sTotal - 1) - 0.5) * laneH;
+
+    // ── Label position: always in the corridor AFTER the source column ────
+    // This guarantees labels never land on node cards or other labels.
+    const edgeLabel = e.label as string | undefined;
+    let labelPos: { x: number; y: number } | undefined;
+    if (edgeLabel?.trim() && nodePositions.has(e.source) && nodePositions.has(e.target)) {
+      const sp    = nodePositions.get(e.source)!;
+      const tp    = nodePositions.get(e.target)!;
+      const corrX = nodeCorridorX.get(e.source);
+      if (corrX !== undefined) {
+        const srcHandleY = sp.y + NODE_H / 2 + sOffset;
+        const tgtHandleY = tp.y + NODE_H / 2 + tOffset;
+        const desiredY   = (srcHandleY + tgtHandleY) / 2;
+        const placedY    = claimLabelY(corrX, desiredY);
+        labelPos = { x: corrX, y: placedY };
+      }
+    }
+
     return {
       ...e,
       id: e.id ?? `e-${e.source}-${e.target}-${i}`,
       type: "awsEdge",
       animated: false,
-      sourceHandle: "right",  // exit from right handle
-      targetHandle: "left",   // enter from left handle
+      sourceHandle: "right",
+      targetHandle: "left",
       markerEnd: {
         type: MarkerType.ArrowClosed,
         width: 14,
         height: 14,
         color,
       },
-      data: { relation, animated: isDataFlow, label: e.label },
+      data: {
+        relation,
+        animated: isDataFlow,
+        label: e.label,
+        sourceOffsetY: sOffset,
+        targetOffsetY: tOffset,
+        labelPos,           // explicit corridor position — avoids card overlap
+      },
       label: e.label,
       style: {
-        strokeWidth: isDataFlow ? 2 : 1.5,
+        strokeWidth: isDataFlow ? 2.5 : 2,
         stroke: color,
         strokeDasharray: isBuildDep ? "6 4" : undefined,
+        opacity: 1,
       },
-      zIndex: 5,  // above groups (0), below cards (20)
+      zIndex: 5,
     };
   });
 
@@ -416,7 +509,8 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
       const label = ((n.data as any)?.label ?? "") as string;
       const desc  = ((n.data as any)?.description ?? "") as string;
       const matched = label.toLowerCase().includes(q) || desc.toLowerCase().includes(q);
-      return { ...n, style: { ...n.style, opacity: matched ? 1 : 0.12 } };
+      // Only dim the card itself — edges retain full opacity separately
+      return { ...n, style: { ...n.style, opacity: matched ? 1 : 0.15 } };
     });
   }, [layoutedNodes, searchQuery]);
 
