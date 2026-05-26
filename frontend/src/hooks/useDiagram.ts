@@ -38,10 +38,9 @@ export interface Diagram {
   };
 }
 
-export function useDiagram(repoId: string) {
+export function useDiagram(repoId: string, analysisStatus?: string) {
   const [diagram, setDiagram] = useState<Diagram | null>(null);
   const [loading, setLoading] = useState(true);
-  const retryRef = useRef(0);
 
   const fetchDiagram = useCallback(async () => {
     if (!repoId) return null;
@@ -59,22 +58,29 @@ export function useDiagram(repoId: string) {
   useEffect(() => {
     if (!repoId) { setLoading(false); return; }
     let cancelled = false;
+    let retries = 0;
 
     async function load() {
       setLoading(true);
       let result = await fetchDiagram();
-      if (!result && retryRef.current < 1) {
-        retryRef.current++;
+      // If the diagram isn't found immediately, retry up to 2 times with a 2-second delay
+      while (!result && retries < 2) {
+        retries++;
         await new Promise((r) => setTimeout(r, 2000));
         if (cancelled) return;
         result = await fetchDiagram();
       }
-      if (!cancelled) { setDiagram(result); setLoading(false); }
+      if (!cancelled) {
+        setDiagram(result);
+        setLoading(false);
+      }
     }
 
     load();
-    return () => { cancelled = true; };
-  }, [repoId, fetchDiagram]);
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId, fetchDiagram, analysisStatus]);
 
   return { diagram, loading };
 }
