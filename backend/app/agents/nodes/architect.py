@@ -10,26 +10,61 @@ from app.agents.state import AnalysisState, ParsedFile, ReactFlowNode, ReactFlow
 from app.core.llm import get_diagram_llm, _invoke_with_retry
 
 SYSTEM_PROMPT = """
-You are a Senior Staff Software Architect analyzing a codebase.
-Produce an AWS-style layered architecture diagram in JSON.
+You are a Senior Staff Software Architect producing a production-grade AWS-style architecture diagram.
 
 VOCABULARY
-- "layer": horizontal tier (e.g. Applications, Core Services, Data Storage)
-- "group": named subsection within a layer (e.g. "API Gateway", "Workers")
-- "type": semantic category — one of: app | service | package | agent | infrastructure | external | database
+- "layer": horizontal tier (top to bottom rendering order)
+- "group": named subsection within a layer
+- "type": semantic category
 
-OUTPUT FORMAT — return ONLY valid JSON:
+LAYERS (top → bottom):
+  "dev-tools"        — CI/CD, Docker, Makefile, linters, package managers
+  "applications"     — web apps, CLIs, dashboards, mobile frontends
+  "core-services"    — API gateways, entry point servers, main daemons, routers
+  "business-logic"   — internal modules, agents, workers, skills, processors
+  "data-storage"     — databases, caches, queues, blob storage, vector stores
+  "external"         — Stripe, OpenAI, GitHub API, WebSocket, 3rd-party services
+
+NODE TYPES (pick the most accurate):
+  "app"              → frontend application, CLI, dashboard
+  "service"          → backend service, API, daemon, server
+  "package"          → shared library, SDK, utility package
+  "agent"            → ML agent, coding agent, orchestration module, skill
+  "infrastructure"   → Docker, K8s, CI/CD, monitoring, build tool
+  "external"         → 3rd party API, SaaS, payment system
+  "database"         → PostgreSQL, Redis, MongoDB, S3, vector DB, queue
+
+RULES:
+1. Each node = one meaningful architectural component, NOT one file
+2. Combine related files into single nodes (max 20 nodes total)
+3. Descriptions must be meaningful: explain what the component DOES (1-2 sentences)
+4. Tech field: short stack (e.g. "FastAPI + SQLAlchemy", "Next.js 14", "Redis 7")
+5. Labels: short human-readable names (e.g. "API Gateway", "Auth Service", "Web App")
+6. group: optional, used to visually cluster nodes within same layer
+
+EDGES — only draw runtime/meaningful relationships (max 25 edges):
+  Relation types: "data-flow" | "control-flow" | "build-dep"
+  Labels: short verbs: "calls", "publishes", "consumes", "reads", "writes",
+          "triggers", "deploys", "streams to", "authenticates", "fetches"
+
+  - "data-flow": real-time data or event streaming (animated in UI)
+  - "control-flow": orchestration, triggers, API calls
+  - "build-dep": compile-time / package dependency (dashed in UI)
+
+DO NOT draw: file imports, every internal module connection, circular noise
+
+OUTPUT FORMAT — return ONLY valid JSON with no markdown fences:
 {
   "nodes": [
     {
-      "id": "kebab-case-id",
+      "id": "kebab-case-unique-id",
       "data": {
-        "label": "Human Name",
-        "layer": "applications | core-services | business-logic | data-storage | external | dev-tools",
-        "group": "Subgroup Name",
-        "type": "app | service | package | agent | infrastructure | external | database",
-        "description": "One-line what this does",
-        "tech": "Key tech stack (e.g. FastAPI + SQLAlchemy)"
+        "label": "Human Readable Name",
+        "layer": "<layer from list above>",
+        "group": "Optional Group Name",
+        "type": "<type from list above>",
+        "description": "What this component does in 1-2 sentences.",
+        "tech": "Primary tech stack"
       }
     }
   ],
@@ -38,54 +73,25 @@ OUTPUT FORMAT — return ONLY valid JSON:
       "id": "e-source-target",
       "source": "source-node-id",
       "target": "target-node-id",
-      "label": "verb label (e.g. calls, publishes, reads, triggers)",
+      "label": "verb label",
       "relation": "data-flow | control-flow | build-dep"
     }
   ]
 }
 
-LAYERING RULES (top → bottom as rendered):
-Layer "dev-tools"        — CI/CD, Docker, Makefile, linters
-Layer "applications"     — web apps, CLIs, dashboards, mobile apps
-Layer "core-services"    — API gateways, main entry points, daemons
-Layer "business-logic"   — internal modules, agents, workers, skills
-Layer "data-storage"     — databases, caches, queues, S3
-Layer "external"         — Stripe, OpenAI, WebSocket, 3rd-party APIs
-
-GROUPING RULES:
-- Group related nodes under a shared group name within each layer
-- Example: in "core-services" layer, group "API Layer" might contain "Auth Service" and "User Service"
-
-NODE DESIGN GUIDELINES:
-- Each node = one meaningful architectural component, NOT one file
-- Combine related files into single nodes
-- 1–2 sentence description explaining purpose
-
-EDGE RULES — Only draw meaningful relationships:
-1. "calls"        — runtime HTTP/gRPC call
-2. "publishes"    — event/message published
-3. "consumes"     — event/message consumed
-4. "reads"        — reads from DB/cache
-5. "writes"       — writes to DB/cache
-6. "triggers"     — starts a workflow/daemon
-7. "imports"      — build-time dependency
-8. "deploys"      — CI/CD deploys to infra
-
-No more than 20 nodes total.
-No more than 25 edges total.
-Prefer quality over quantity.
+Quality over quantity. Prefer whitespace over compactness. Think like an AWS Solutions Architect.
 """
 
 USER_PROMPT_TEMPLATE = """
-Analyze this codebase and produce an architecture diagram.
+Analyze this codebase and produce a clean, production-grade architecture diagram.
 
 REPO: {repo_url}
 FILES ANALYZED: {file_count}
 
-STRUCTURE SUMMARY:
+STRUCTURE SUMMARY (first 2 snippets per file):
 {structure_summary}
 
-Output the JSON diagram following the rules above.
+Infer the actual architecture from these files. Output the JSON diagram only.
 """
 
 def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -102,7 +108,7 @@ def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
             clean_chunk = chunk.split("\n")[0].strip()
             summary_lines.append(f"  - {clean_chunk}")
 
-    structure_summary = "\n".join(summary_lines[:200])
+    structure_summary = "\n".join(summary_lines[:250])
 
     try:
         llm = get_diagram_llm()
@@ -130,12 +136,15 @@ def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
         else:
             confidence = "low"
 
+        layer_set = set(n.get('data', {}).get('layer', '') for n in nodes)
         return {
             "reactflow_nodes": nodes,
             "reactflow_edges": edges,
             "confidence_level": confidence,
             "current_step": "architecting_complete",
-            "progress_log": [f"✅ Generated layered architecture with {len(nodes)} components across {len(set(n.get('data',{}).get('layer','') for n in nodes))} layers"]
+            "progress_log": [
+                f"✅ Generated AWS-style architecture: {len(nodes)} components across {len(layer_set)} layers, {len(edges)} relationships"
+            ]
         }
 
     except Exception as e:
