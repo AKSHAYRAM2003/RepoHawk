@@ -194,8 +194,8 @@ def ast_parser_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "progress_log": [f"❌ Clone path missing: {cloned_path}"],
         }
 
-    parsed_files: List[ParsedFile] = []
-    total_files = 0
+    # 1. Collect candidate files
+    candidates = []
     skipped = 0
 
     for dirpath, dirnames, filenames in os.walk(cloned_path):
@@ -222,10 +222,69 @@ def ast_parser_node(state: Dict[str, Any]) -> Dict[str, Any]:
             except OSError:
                 continue
 
-            total_files += 1
-            result = parse_single_file(file_path, cloned_path)
-            if result:
-                parsed_files.append(result)
+            # 2. Filter noise files
+            name_lower = filename.lower()
+            
+            # Skip hidden files/dotfiles (except for known configuration or source files if any, but standard is skip)
+            if filename.startswith(".") and not filename.startswith(".env"):
+                continue
+                
+            # Skip licenses/notices
+            if name_lower in {"license", "copying", "patents", "notice", "license.txt", "license.md", "copying.txt"}:
+                continue
+                
+            # Skip translated readmes (e.g. README_zh.md, README_ru.md, README_ja.md)
+            if name_lower.startswith("readme_") or name_lower.startswith("contributing_"):
+                continue
+
+            candidates.append((file_path, filename, ext.lower()))
+
+    # 3. Assign priority score (lower is higher priority)
+    scored_files = []
+    for file_path, filename, ext in candidates:
+        rel_path = os.path.relpath(file_path, cloned_path)
+        rel_path_lower = rel_path.lower()
+        name_lower = filename.lower()
+        
+        is_test = (
+            "test" in rel_path_lower or
+            name_lower.startswith("test_") or
+            name_lower.endswith("_test") or
+            "__tests__" in rel_path_lower
+        )
+        
+        if is_test:
+            # Deprioritize tests to lowest tier
+            score = 5
+        elif ext in LANGUAGE_MAP:
+            # Priority 1: Primary source code (.py, .js, .ts, .go, etc.)
+            score = 1
+        elif name_lower == "readme.md":
+            # Priority 2: Main README
+            score = 2
+        elif name_lower in {"package.json", "requirements.txt", "pyproject.toml", "go.mod", "dockerfile", "docker-compose.yml", "makefile"}:
+            # Priority 3: Primary manifests
+            score = 3
+        else:
+            # Priority 4: Other text/config files
+            score = 4
+            
+        scored_files.append({
+            "path": file_path,
+            "score": score
+        })
+
+    # Sort candidates by priority score (ascending)
+    scored_files.sort(key=lambda x: x["score"])
+
+    # 4. Parse sorted files
+    parsed_files: List[ParsedFile] = []
+    total_files = len(scored_files)
+
+    for sf in scored_files:
+        result = parse_single_file(sf["path"], cloned_path)
+        if result:
+            parsed_files.append(result)
 
     return {
         "parsed_files": parsed_files,
