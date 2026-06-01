@@ -55,8 +55,18 @@ def git_cloner_node(state: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Partial state update with cloned_path, current_step, progress_log
     """
-    repo_url = state["repo_url"]
+    repo_url = state["repo_url"].strip()
     repo_id = state["repo_id"]
+
+    # Normalize URL (ensure protocol prefix)
+    if not repo_url.startswith("http://") and not repo_url.startswith("https://"):
+        repo_url = "https://" + repo_url
+
+    # Fallback for org/profile links: if length of path segments is 1 (excluding github.com),
+    # assume repo name is same as org/user name (e.g. github.com/openclaw -> github.com/openclaw/openclaw)
+    url_parts = repo_url.rstrip("/").split("/")
+    if len(url_parts) == 4 and url_parts[2] == "github.com":
+        repo_url = f"{repo_url.rstrip('/')}/{url_parts[3]}"
 
     # Validate URL
     if not validate_github_url(repo_url):
@@ -65,6 +75,7 @@ def git_cloner_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "current_step": "error",
             "progress_log": [f"❌ Invalid GitHub URL: {repo_url}"],
         }
+
 
     clone_path = get_clone_path(repo_id)
 
