@@ -495,6 +495,8 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
 }) {
   const [selectedNode, setSelectedNode] = useState<{ id: string; data: ArchNodeData } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const { fitView } = useReactFlow();
 
   const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
     () => buildLayout(rawNodes, rawEdges),
@@ -502,25 +504,93 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
   );
 
   const displayNodes = useMemo(() => {
-    if (!searchQuery.trim()) return layoutedNodes;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
     return layoutedNodes.map((n) => {
       if (n.type !== "archNode") return n;
       const label = ((n.data as any)?.label ?? "") as string;
       const desc  = ((n.data as any)?.description ?? "") as string;
-      const matched = label.toLowerCase().includes(q) || desc.toLowerCase().includes(q);
-      // Only dim the card itself — edges retain full opacity separately
-      return { ...n, style: { ...n.style, opacity: matched ? 1 : 0.15 } };
-    });
-  }, [layoutedNodes, searchQuery]);
 
-  const [nodesState, , onNodesChange] = useNodesState(displayNodes);
+      // Search dimming
+      const searchDim = q && !(label.toLowerCase().includes(q) || desc.toLowerCase().includes(q));
+
+      // Highlight glow: pulse ring on the QA-referenced node
+      const isHighlighted = n.id === highlightedNodeId;
+      const highlightStyle = isHighlighted
+        ? {
+            boxShadow: "0 0 0 3px #6366f1, 0 0 24px 6px rgba(99,102,241,0.5)",
+            borderRadius: 14,
+            transition: "box-shadow 0.3s ease",
+          }
+        : {};
+
+      return {
+        ...n,
+        style: {
+          ...n.style,
+          opacity: searchDim ? 0.15 : 1,
+          ...highlightStyle,
+        },
+      };
+    });
+  }, [layoutedNodes, searchQuery, highlightedNodeId]);
+
+  const [nodesState, setNodesState, onNodesChange] = useNodesState(displayNodes);
   const [edgesState, , onEdgesChange] = useEdgesState(layoutedEdges);
+
+  // Sync nodesState whenever displayNodes changes (search filter or highlight glow)
+  useEffect(() => {
+    setNodesState(displayNodes as any);
+  }, [displayNodes, setNodesState]);
 
   const onNodeClick = useCallback((_: any, node: any) => {
     if (node.type === "archNode") setSelectedNode({ id: node.id, data: node.data as ArchNodeData });
   }, []);
   const onPaneClick = useCallback(() => setSelectedNode(null), []);
+
+  // ── QA Chat highlight integration ──────────────────────────────────────────
+  // Listens for 'repohawk-highlight-node' dispatched by the chat panel.
+  // On match: opens the MetadataPanel, pulses a glow ring, and smoothly
+  // centers the viewport using React Flow's fitView.
+  useEffect(() => {
+    const handleHighlight = (e: Event) => {
+      const { nodeId } = (e as CustomEvent<{ nodeId: string }>).detail;
+      if (!nodeId) return;
+
+      // Fuzzy match: exact ID first, then substring match for partial IDs
+      const match = layoutedNodes.find(
+        (n) => n.type === "archNode" && (n.id === nodeId || n.id.includes(nodeId) || nodeId.includes(n.id))
+      );
+
+      if (!match) {
+        console.warn(`[RepoHawk] repohawk-highlight-node: no node found for id="${nodeId}"`);
+        return;
+      }
+
+      // 1. Open MetadataPanel for this node
+      setSelectedNode({ id: match.id, data: match.data as unknown as ArchNodeData });
+
+      // 2. Apply glow pulse via highlightedNodeId → displayNodes memo will pick it up
+      setHighlightedNodeId(match.id);
+
+      // 3. Smoothly center + zoom the viewport onto the node
+      //    Small timeout ensures React has processed the state update first
+      setTimeout(() => {
+        fitView({
+          nodes: [{ id: match.id }],
+          duration: 800,
+          padding: 0.35,
+          minZoom: 0.5,
+          maxZoom: 1.5,
+        });
+      }, 50);
+
+      // 4. Remove glow after 2.5s so it fades naturally
+      setTimeout(() => setHighlightedNodeId(null), 2500);
+    };
+
+    window.addEventListener("repohawk-highlight-node", handleHighlight);
+    return () => window.removeEventListener("repohawk-highlight-node", handleHighlight);
+  }, [layoutedNodes, fitView]);
 
   const layerCount = useMemo(
     () => new Set(rawNodes.map((n) => n.data.layer ?? "core-services")).size,
