@@ -547,22 +547,27 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
   }, []);
   const onPaneClick = useCallback(() => setSelectedNode(null), []);
 
-  // ── QA Chat highlight integration ──────────────────────────────────────────
+  // ── QA Chat highlight integration (commit 8) ────────────────────────────────
   // Listens for 'repohawk-highlight-node' dispatched by the chat panel.
-  // On match: opens the MetadataPanel, pulses a glow ring, and smoothly
-  // centers the viewport using React Flow's fitView.
+  // STRICT EXACT MATCH ONLY — the chat backend now validates the node-id
+  // against the real diagram node ids before sending it, so we can trust
+  // the payload. No fuzzy matching. This prevents the previous bug where
+  // a substring like "id" would match every node.
   useEffect(() => {
     const handleHighlight = (e: Event) => {
       const { nodeId } = (e as CustomEvent<{ nodeId: string }>).detail;
       if (!nodeId) return;
 
-      // Fuzzy match: exact ID first, then substring match for partial IDs
+      // Strict exact match
       const match = layoutedNodes.find(
-        (n) => n.type === "archNode" && (n.id === nodeId || n.id.includes(nodeId) || nodeId.includes(n.id))
+        (n) => n.type === "archNode" && n.id === nodeId
       );
 
       if (!match) {
-        console.warn(`[RepoHawk] repohawk-highlight-node: no node found for id="${nodeId}"`);
+        console.warn(
+          `[RepoHawk] repohawk-highlight-node: no exact-match node for id="${nodeId}". ` +
+          `Ignoring (chat highlight ids are now server-validated; if you see this, the backend validation may have failed).`
+        );
         return;
       }
 
@@ -573,7 +578,6 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
       setHighlightedNodeId(match.id);
 
       // 3. Smoothly center + zoom the viewport onto the node
-      //    Small timeout ensures React has processed the state update first
       setTimeout(() => {
         fitView({
           nodes: [{ id: match.id }],

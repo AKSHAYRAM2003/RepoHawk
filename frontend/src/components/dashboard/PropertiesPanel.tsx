@@ -6,9 +6,10 @@ import QAChatPanel from "./QAChatPanel";
 
 interface PropertiesPanelProps {
   repoId: string;
+  validNodeIds?: string[];        // commit 8 — actual diagram node IDs
 }
 
-export default function PropertiesPanel({ repoId }: PropertiesPanelProps) {
+export default function PropertiesPanel({ repoId, validNodeIds = [] }: PropertiesPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<"properties" | "qa">("properties");
 
@@ -73,7 +74,7 @@ export default function PropertiesPanel({ repoId }: PropertiesPanelProps) {
             {/* QA Agent tab — full chat interface */}
             {activeTab === "qa" && (
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <QAChatPanel repoId={repoId} />
+                <QAChatPanel repoId={repoId} validNodeIds={validNodeIds} />
               </div>
             )}
           </div>

@@ -539,21 +539,92 @@ function MessageBubble({
 
 // ── Main QA Chat Panel ────────────────────────────────────────────────────────
 
-export default function QAChatPanel({ repoId }: { repoId: string }) {
+export default function QAChatPanel({
+  repoId,
+  validNodeIds = [],
+}: {
+  repoId: string;
+  validNodeIds?: string[];
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [sessionId] = useState(() =>
-    typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36)
-  );
+  // Session ID is now server-issued. We start with the localStorage value
+  // (if any) and replace it on the first SSE `session` event.
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage.getItem(`repohawk:chat:session:${repoId}`);
+    } catch {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [metricsOpen, setMetricsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasMessages = messages.length > 0;
+
+  // Persist the session_id to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !sessionId) return;
+    try {
+      window.localStorage.setItem(`repohawk:chat:session:${repoId}`, sessionId);
+    } catch {}
+  }, [sessionId, repoId]);
+
+  // Load existing history on mount (commit 8)
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHistory() {
+      if (!sessionId) {
+        setIsLoadingHistory(false);
+        return;
+      }
+      try {
+        const r = await fetch(
+          `/api/chat/sessions/${repoId}/${sessionId}/messages`
+        );
+        if (!r.ok) {
+          if (!cancelled) setIsLoadingHistory(false);
+          return;
+        }
+        const data = await r.json();
+        const msgs = (data.messages || []).map((m: any) => ({
+          id: m.created_at || crypto.randomUUID(),
+          role: m.role as "user" | "assistant",
+          content: m.content || "",
+          sourceFiles: m.source_files || undefined,
+          highlightNodeId: m.highlight_node_id || undefined,
+          codeRef: m.code_ref || undefined,
+          timestamp: new Date(m.created_at || Date.now()),
+        }));
+        if (!cancelled) setMessages(msgs);
+      } catch (err) {
+        console.warn("Failed to load chat history:", err);
+      } finally {
+        if (!cancelled) setIsLoadingHistory(false);
+      }
+    }
+    loadHistory();
+    return () => { cancelled = true; };
+  }, [repoId, sessionId]);
 
   // Smooth scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Start a new conversation: clear the session id and messages
+  const startNewSession = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(`repohawk:chat:session:${repoId}`);
+      } catch {}
+    }
+    setSessionId(null);
+    setMessages([]);
+  }, [repoId]);
 
   // Auto-resize textarea as user types
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -627,9 +698,9 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             repo_id: repoId,
-            session_id: sessionId,
+            session_id: sessionId,    // null = server will create one
             query: query.trim(),
-            valid_node_ids: [],   // populated by commit 8
+            valid_node_ids: validNodeIds,
           }),
           signal: ctrl.signal,
         });
@@ -669,7 +740,12 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
                 continue;
               }
 
-              if (event.type === "token" && event.delta) {
+              if (event.type === "session" && event.session_id) {
+                // Server-issued session id; persist it
+                if (!sessionId) {
+                  setSessionId(event.session_id);
+                }
+              } else if (event.type === "token" && event.delta) {
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantId
@@ -804,8 +880,28 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
           overflow: "hidden",
         }}
       >
+        {/* ── Loading history on mount ─────────────────────────── */}
+        {isLoadingHistory && !hasMessages && (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#475569",
+              fontSize: 11.5,
+            }}
+          >
+            <RefreshCw
+              size={12}
+              style={{ animation: "rh-spin 1s linear infinite", marginRight: 8 }}
+            />
+            Loading previous conversation…
+          </div>
+        )}
+
         {/* ── Empty state / Suggestions ─────────────────────────── */}
-        {!hasMessages && (
+        {!isLoadingHistory && !hasMessages && (
           <div
             style={{
               flex: 1,
@@ -1068,19 +1164,249 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
             </div>
           </div>
 
-          {/* Keyboard hint */}
-          <p
+          {/* Keyboard hint + toolbar */}
+          <div
             style={{
               margin: "5px 0 0",
-              fontSize: 9.5,
-              color: "#1e293b",
-              textAlign: "center",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
-            ↵ send · ⇧↵ new line · click pills to highlight canvas
-          </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 9.5,
+                color: "#1e293b",
+                textAlign: "center",
+                flex: 1,
+              }}
+            >
+              ↵ send · ⇧↵ new line · click pills to highlight canvas
+            </p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {sessionId && messages.length > 0 && (
+                <button
+                  onClick={startNewSession}
+                  title="Start a new conversation"
+                  aria-label="Start a new conversation"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#1e293b",
+                    fontSize: 9.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 3,
+                    padding: 0,
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.color = "#64748b";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.color = "#1e293b";
+                  }}
+                >
+                  <RefreshCw size={9} /> new
+                </button>
+              )}
+              {sessionId && (
+                <button
+                  onClick={() => setMetricsOpen(true)}
+                  title="Show query metrics"
+                  aria-label="Show query metrics"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#1e293b",
+                    fontSize: 9.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 3,
+                    padding: 0,
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.color = "#64748b";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.color = "#1e293b";
+                  }}
+                >
+                  📊 metrics
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Metrics modal (commit 8) */}
+      {metricsOpen && (
+        <MetricsModal
+          sessionId={sessionId}
+          onClose={() => setMetricsOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+// ── Metrics Modal (commit 8) ──────────────────────────────────────────────────
+
+interface MetricsRow {
+  id: string;
+  question: string;
+  num_chunks_retrieved: number;
+  num_chunks_kept: number;
+  answer_length_chars: number;
+  highlight_node_id: string | null;
+  highlight_hit: boolean;
+  latency_total_ms: number;
+  latency_retrieval_ms: number;
+  latency_llm_ms: number;
+  created_at: string | null;
+  error: string | null;
+}
+
+function MetricsModal({
+  sessionId,
+  onClose,
+}: {
+  sessionId: string | null;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<MetricsRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(
+          `/api/chat/metrics?session_id=${encodeURIComponent(sessionId)}`
+        );
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled) setRows(data.metrics || []);
+      } catch (err) {
+        console.warn("Failed to load metrics:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "rgba(8,9,14,0.98)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 14,
+          maxWidth: 600,
+          width: "100%",
+          maxHeight: "85vh",
+          overflow: "auto",
+          padding: 18,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 14,
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 14, color: "#e2e8f0", fontWeight: 700 }}>
+            Query Telemetry
+          </h3>
+          <button
+            onClick={onClose}
+            aria-label="Close metrics"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#64748b",
+              cursor: "pointer",
+              fontSize: 18,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {loading ? (
+          <p style={{ color: "#475569", fontSize: 12, textAlign: "center", padding: 24 }}>
+            Loading…
+          </p>
+        ) : rows.length === 0 ? (
+          <p style={{ color: "#475569", fontSize: 12, textAlign: "center", padding: 24 }}>
+            No metrics yet. Send a message to record telemetry.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {rows.map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: 8,
+                  padding: "9px 11px",
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 4px",
+                    fontSize: 11.5,
+                    color: "#cbd5e1",
+                    fontWeight: 600,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {r.question.length > 80 ? r.question.slice(0, 80) + "…" : r.question}
+                </p>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    fontSize: 10,
+                    color: "#64748b",
+                  }}
+                >
+                  <span>🕒 {r.latency_total_ms}ms</span>
+                  <span>📥 {r.num_chunks_kept}/{r.num_chunks_retrieved} chunks</span>
+                  <span>📤 {r.answer_length_chars}c</span>
+                  {r.highlight_hit && <span style={{ color: "#10b981" }}>🎯 hit</span>}
+                  {r.error && <span style={{ color: "#f87171" }}>⚠ err</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
