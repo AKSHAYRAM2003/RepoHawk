@@ -17,7 +17,7 @@ Output: QAState with answer, retrieved_chunks, highlight_node_id,
 
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncGenerator
 
 from pydantic import BaseModel, Field
 
@@ -394,3 +394,223 @@ def qa_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
             ),
             "source_files": [],
         }
+
+
+# ── Streaming API ─────────────────────────────────────────────────────────────
+# This is the streaming path used by the chat router (commit 2).
+# It still uses the LangGraph `qa_graph`, but calls `.astream()` to yield
+# intermediate events. The router wraps it in an SSE response.
+#
+# Event shape (JSON):
+#   {"type": "session",   "session_id": "..."}
+#   {"type": "token",     "delta": "..."}                # per-token from the LLM
+#   {"type": "sources",   "files": [...], "highlight_node_id": "...", "code_ref": {...}}
+#   {"type": "done"}                                    # final event
+#   {"type": "error",    "message": "..."}              # on failure
+
+
+async def astream_qa_answer(
+    *,
+    question: str,
+    repo_id: str,
+    session_id: str,
+    chat_history: Optional[List] = None,
+    valid_node_ids: Optional[List[str]] = None,
+) -> "AsyncGenerator[Dict[str, Any], None]":
+    """
+    Streaming QA answer. Yields SSE-shaped dicts.
+    Falls back gracefully on errors so the client always gets a `done` event.
+    """
+    from langchain_core.messages import BaseMessage
+    chat_history = chat_history or []
+    valid_node_ids = valid_node_ids or []
+
+    # Always emit the session event first so the client can record it.
+    yield {"type": "session", "session_id": session_id}
+
+    try:
+        # 1. Query rewriting
+        rewritten_question = question
+        if chat_history and len(chat_history) >= 2:
+            try:
+                rewritten_question = await rewrite_query(question, chat_history)
+            except Exception as e:
+                logger.warning(f"QA stream: rewrite failed ({e}), using original")
+                rewritten_question = question
+
+        # 2. Embed
+        embeddings_client = get_embeddings()
+        try:
+            query_vector = embeddings_client.embed_query(rewritten_question)
+        except Exception as embed_err:
+            yield {"type": "error", "message": f"Embedding service unavailable: {embed_err}"}
+            yield {"type": "done"}
+            return
+
+        # 3. Retrieve
+        collection_name = f"repo_{repo_id.replace('-', '_')}"
+        client = get_chroma_client()
+        try:
+            collection = client.get_collection(name=collection_name)
+        except Exception:
+            yield {
+                "type": "token",
+                "delta": (
+                    "This repository hasn't been indexed for semantic search yet. "
+                    "Please re-run the analysis to enable Q&A on the codebase."
+                ),
+            }
+            yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+            yield {"type": "done"}
+            return
+
+        results = collection.query(
+            query_embeddings=[query_vector],
+            n_results=min(TOP_K, collection.count()),
+        )
+        raw_chunks = results.get("documents", [[]])[0]
+        raw_metadatas = results.get("metadatas", [[]])[0]
+        raw_distances = (results.get("distances") or [[]])[0]
+
+        if not raw_chunks:
+            yield {
+                "type": "token",
+                "delta": (
+                    "I searched the codebase index but couldn't find any relevant code "
+                    "for your question. Try rephrasing or asking about a specific file or component."
+                ),
+            }
+            yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+            yield {"type": "done"}
+            return
+
+        # Apply relevance threshold + filter out embed_failed chunks
+        chunks: List[str] = []
+        metadatas: List[Dict] = []
+        for chunk, meta, dist in zip(raw_chunks, raw_metadatas, raw_distances or [0.0] * len(raw_chunks)):
+            if meta.get("embed_failed"):
+                continue
+            if raw_distances and dist is not None and dist > RELEVANCE_THRESHOLD:
+                continue
+            chunks.append(chunk)
+            metadatas.append(meta)
+
+        if not chunks:
+            yield {
+                "type": "token",
+                "delta": (
+                    "I searched the codebase but none of the indexed code is closely related "
+                    "to your question. Try rephrasing or asking about a different aspect of the code."
+                ),
+            }
+            yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+            yield {"type": "done"}
+            return
+
+        # 4. Build context + LLM messages
+        context_parts = []
+        for chunk, meta in zip(chunks, metadatas):
+            file_path = meta.get("path", "unknown")
+            language = meta.get("language", "")
+            context_parts.append(
+                f"### File: `{file_path}`\n```{language}\n{chunk.strip()}\n```"
+            )
+        context_str = "\n\n".join(context_parts)
+
+        source_files = list(dict.fromkeys(
+            m.get("path", "") for m in metadatas if m.get("path")
+        ))[:8]
+
+        messages = [
+            SystemMessage(content=_build_system_prompt(valid_node_ids)),
+            SystemMessage(content=f"## Retrieved Code Context:\n\n{context_str}"),
+        ]
+        if chat_history:
+            history_slice = chat_history[-12:]
+            approx_tokens = 0
+            kept = []
+            for msg in reversed(history_slice):
+                content = getattr(msg, "content", "") or ""
+                approx_tokens += len(content) // 4
+                if approx_tokens > MAX_HISTORY_TOKENS:
+                    break
+                kept.append(msg)
+            kept.reverse()
+            messages.extend(kept)
+        messages.append(HumanMessage(content=question))
+
+        # 5. Stream the LLM response
+        from app.core.llm import invoke_with_fallback, get_chat_llm
+        llm = get_chat_llm()
+
+        # We stream raw text (not structured output) so the user sees tokens
+        # arrive in real time. The structured parse happens at the end of the stream.
+        full_text = ""
+        try:
+            stream = llm.stream(messages)
+            for chunk in stream:
+                delta = getattr(chunk, "content", None) or ""
+                if delta:
+                    full_text += delta
+                    yield {"type": "token", "delta": delta}
+        except Exception as stream_err:
+            # If streaming failed, try a non-streaming invoke as a fallback
+            logger.warning(f"QA stream: streaming failed ({stream_err}), falling back to invoke")
+            try:
+                resp = invoke_with_fallback(llm, messages)
+                full_text = getattr(resp, "content", "") or ""
+                if full_text:
+                    yield {"type": "token", "delta": full_text}
+            except Exception as invoke_err:
+                yield {"type": "error", "message": f"LLM call failed: {invoke_err}"}
+                yield {"type": "done"}
+                return
+
+        if not full_text.strip():
+            yield {"type": "error", "message": "Empty response from model"}
+            yield {"type": "done"}
+            return
+
+        # 6. Parse the structured `---METADATA---` tail (kept for backwards compat
+        # with non-structured models that still emit it). If the LLM didn't emit
+        # one, we just send the source files + no highlight.
+        highlight_node_id = ""
+        code_ref = None
+        answer_text = full_text
+        if "---METADATA---" in full_text:
+            try:
+                parts = full_text.split("---METADATA---", 1)
+                answer_text = parts[0].strip()
+                metadata_raw = parts[1].strip().strip("`").strip()
+                if metadata_raw.startswith("json"):
+                    metadata_raw = metadata_raw[4:].strip()
+                metadata = json.loads(metadata_raw)
+                highlight_node_id = _validate_node_id(
+                    metadata.get("highlight_node_id", "") or "", valid_node_ids
+                )
+                if isinstance(metadata.get("code_ref"), dict):
+                    code_ref = metadata.get("code_ref")
+            except Exception as parse_err:
+                logger.warning(f"QA stream: metadata parse failed ({parse_err})")
+                answer_text = full_text  # use full text as answer
+
+        # 7. Emit final events
+        yield {
+            "type": "sources",
+            "files": source_files,
+            "highlight_node_id": highlight_node_id,
+            "code_ref": code_ref,
+        }
+        yield {"type": "done"}
+
+        logger.info(
+            f"QA stream: Answered '{question[:60]}' | "
+            f"{len(chunks)}/{len(raw_chunks)} chunks kept | "
+            f"highlight={highlight_node_id or 'none'} | "
+            f"len={len(full_text)}"
+        )
+
+    except Exception as e:
+        logger.error(f"QA stream: Unexpected error — {e}", exc_info=True)
+        yield {"type": "error", "message": str(e)}
+        yield {"type": "done"}
