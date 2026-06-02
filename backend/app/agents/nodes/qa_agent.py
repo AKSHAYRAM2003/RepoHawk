@@ -420,10 +420,21 @@ async def astream_qa_answer(
     """
     Streaming QA answer. Yields SSE-shaped dicts.
     Falls back gracefully on errors so the client always gets a `done` event.
+
+    In addition to the user-facing events (session, token, sources, done, error),
+    this generator also yields a final `metrics` event with telemetry for the
+    router to persist to the qa_queries table.
     """
+    import time as _time
     from langchain_core.messages import BaseMessage
     chat_history = chat_history or []
     valid_node_ids = valid_node_ids or []
+
+    started_at = _time.monotonic()
+    retrieval_ms = 0
+    llm_ms = 0
+    num_chunks_retrieved = 0
+    num_chunks_kept = 0
 
     # Always emit the session event first so the client can record it.
     yield {"type": "session", "session_id": session_id}
@@ -444,10 +455,20 @@ async def astream_qa_answer(
             query_vector = embeddings_client.embed_query(rewritten_question)
         except Exception as embed_err:
             yield {"type": "error", "message": f"Embedding service unavailable: {embed_err}"}
+            yield {
+                "type": "metrics",
+                "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                "num_chunks_retrieved": 0,
+                "num_chunks_kept": 0,
+                "latency_retrieval_ms": 0,
+                "latency_llm_ms": 0,
+                "rewritten_question": rewritten_question,
+            }
             yield {"type": "done"}
             return
 
         # 3. Retrieve
+        retrieval_start = _time.monotonic()
         collection_name = f"repo_{repo_id.replace('-', '_')}"
         client = get_chroma_client()
         try:
@@ -461,6 +482,15 @@ async def astream_qa_answer(
                 ),
             }
             yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+            yield {
+                "type": "metrics",
+                "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                "num_chunks_retrieved": 0,
+                "num_chunks_kept": 0,
+                "latency_retrieval_ms": 0,
+                "latency_llm_ms": 0,
+                "rewritten_question": rewritten_question,
+            }
             yield {"type": "done"}
             return
 
@@ -471,6 +501,7 @@ async def astream_qa_answer(
         raw_chunks = results.get("documents", [[]])[0]
         raw_metadatas = results.get("metadatas", [[]])[0]
         raw_distances = (results.get("distances") or [[]])[0]
+        num_chunks_retrieved = len(raw_chunks)
 
         if not raw_chunks:
             yield {
@@ -481,6 +512,15 @@ async def astream_qa_answer(
                 ),
             }
             yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+            yield {
+                "type": "metrics",
+                "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                "num_chunks_retrieved": 0,
+                "num_chunks_kept": 0,
+                "latency_retrieval_ms": int((_time.monotonic() - retrieval_start) * 1000),
+                "latency_llm_ms": 0,
+                "rewritten_question": rewritten_question,
+            }
             yield {"type": "done"}
             return
 
@@ -494,6 +534,8 @@ async def astream_qa_answer(
                 continue
             chunks.append(chunk)
             metadatas.append(meta)
+        num_chunks_kept = len(chunks)
+        retrieval_ms = int((_time.monotonic() - retrieval_start) * 1000)
 
         if not chunks:
             yield {
@@ -504,6 +546,15 @@ async def astream_qa_answer(
                 ),
             }
             yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+            yield {
+                "type": "metrics",
+                "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                "num_chunks_retrieved": num_chunks_retrieved,
+                "num_chunks_kept": 0,
+                "latency_retrieval_ms": retrieval_ms,
+                "latency_llm_ms": 0,
+                "rewritten_question": rewritten_question,
+            }
             yield {"type": "done"}
             return
 
@@ -540,6 +591,7 @@ async def astream_qa_answer(
         messages.append(HumanMessage(content=question))
 
         # 5. Stream the LLM response
+        llm_start = _time.monotonic()
         from app.core.llm import invoke_with_fallback, get_chat_llm
         llm = get_chat_llm()
 
@@ -554,7 +606,6 @@ async def astream_qa_answer(
                     full_text += delta
                     yield {"type": "token", "delta": delta}
         except Exception as stream_err:
-            # If streaming failed, try a non-streaming invoke as a fallback
             logger.warning(f"QA stream: streaming failed ({stream_err}), falling back to invoke")
             try:
                 resp = invoke_with_fallback(llm, messages)
@@ -563,11 +614,31 @@ async def astream_qa_answer(
                     yield {"type": "token", "delta": full_text}
             except Exception as invoke_err:
                 yield {"type": "error", "message": f"LLM call failed: {invoke_err}"}
+                yield {
+                    "type": "metrics",
+                    "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                    "num_chunks_retrieved": num_chunks_retrieved,
+                    "num_chunks_kept": num_chunks_kept,
+                    "latency_retrieval_ms": retrieval_ms,
+                    "latency_llm_ms": int((_time.monotonic() - llm_start) * 1000),
+                    "rewritten_question": rewritten_question,
+                    "error": str(invoke_err),
+                }
                 yield {"type": "done"}
                 return
+        llm_ms = int((_time.monotonic() - llm_start) * 1000)
 
         if not full_text.strip():
             yield {"type": "error", "message": "Empty response from model"}
+            yield {
+                "type": "metrics",
+                "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                "num_chunks_retrieved": num_chunks_retrieved,
+                "num_chunks_kept": num_chunks_kept,
+                "latency_retrieval_ms": retrieval_ms,
+                "latency_llm_ms": llm_ms,
+                "rewritten_question": rewritten_question,
+            }
             yield {"type": "done"}
             return
 
@@ -592,7 +663,7 @@ async def astream_qa_answer(
                     code_ref = metadata.get("code_ref")
             except Exception as parse_err:
                 logger.warning(f"QA stream: metadata parse failed ({parse_err})")
-                answer_text = full_text  # use full text as answer
+                answer_text = full_text
 
         # 7. Emit final events
         yield {
@@ -601,16 +672,37 @@ async def astream_qa_answer(
             "highlight_node_id": highlight_node_id,
             "code_ref": code_ref,
         }
+        yield {
+            "type": "metrics",
+            "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+            "num_chunks_retrieved": num_chunks_retrieved,
+            "num_chunks_kept": num_chunks_kept,
+            "latency_retrieval_ms": retrieval_ms,
+            "latency_llm_ms": llm_ms,
+            "rewritten_question": rewritten_question,
+            "highlight_node_id": highlight_node_id,
+            "answer_length_chars": len(full_text),
+        }
         yield {"type": "done"}
 
         logger.info(
             f"QA stream: Answered '{question[:60]}' | "
-            f"{len(chunks)}/{len(raw_chunks)} chunks kept | "
+            f"{num_chunks_kept}/{num_chunks_retrieved} chunks kept | "
             f"highlight={highlight_node_id or 'none'} | "
-            f"len={len(full_text)}"
+            f"len={len(full_text)} | "
+            f"total={int((_time.monotonic() - started_at) * 1000)}ms"
         )
 
     except Exception as e:
         logger.error(f"QA stream: Unexpected error — {e}", exc_info=True)
         yield {"type": "error", "message": str(e)}
+        yield {
+            "type": "metrics",
+            "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+            "num_chunks_retrieved": num_chunks_retrieved,
+            "num_chunks_kept": num_chunks_kept,
+            "latency_retrieval_ms": retrieval_ms,
+            "latency_llm_ms": llm_ms,
+            "error": str(e),
+        }
         yield {"type": "done"}
