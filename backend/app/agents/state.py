@@ -102,16 +102,18 @@ class QAState(TypedDict, total=False):
     repo_id: str
     session_id: str                           # Chat session UUID
     question: str
+    valid_node_ids: List[str]                 # Real diagram node IDs (for highlight validation)
 
     # Memory (LangGraph auto-merges via operator.add)
     chat_history: Annotated[List[BaseMessage], operator.add]
 
     # RAG retrieval
-    retrieved_chunks: List[str]               # Top-K from ChromaDB
+    retrieved_chunks: List[str]               # Top-K from ChromaDB (after relevance filter)
+    rewritten_question: str                    # After query rewriting (for telemetry/debug)
 
     # Output
     answer: str
-    highlight_node_id: str                    # React Flow node to highlight
+    highlight_node_id: str                    # React Flow node to highlight (validated)
     code_ref: CodeRef                         # File + line range
     source_files: List[str]                   # Files that contributed to the answer
 
