@@ -27,6 +27,16 @@ LANGUAGE_MAP = {
     ".go": "go",
 }
 
+# Wider list of programming/scripting/markup source file extensions to prioritize
+CODE_EXTENSIONS = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".go",
+    ".rs", ".java", ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp",
+    ".cs", ".php", ".rb", ".swift", ".kt", ".kts", ".scala",
+    ".sh", ".bash", ".pl", ".pm", ".sql", ".r", ".m",
+    ".html", ".css", ".scss", ".sass", ".less",
+}
+
+
 # Directories/files to skip (noise, not architecture)
 SKIP_DIRS = {
     "node_modules", ".git", "__pycache__", ".venv", "venv", "env",
@@ -256,8 +266,8 @@ def ast_parser_node(state: Dict[str, Any]) -> Dict[str, Any]:
         if is_test:
             # Deprioritize tests to lowest tier
             score = 5
-        elif ext in LANGUAGE_MAP:
-            # Priority 1: Primary source code (.py, .js, .ts, .go, etc.)
+        elif ext in CODE_EXTENSIONS or ext in LANGUAGE_MAP:
+            # Priority 1: Primary source code / code scripts / markup (.py, .js, .ts, .go, .rs, .java, etc.)
             score = 1
         elif name_lower == "readme.md":
             # Priority 2: Main README
