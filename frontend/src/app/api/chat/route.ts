@@ -2,23 +2,75 @@ import { NextResponse } from 'next/server';
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8003/api/v1";
 
+/**
+ * Stream chat responses from the FastAPI backend as Server-Sent Events.
+ * The browser receives an `EventSource`-compatible stream of `data: {json}\n\n` frames.
+ *
+ * Backend event shapes:
+ *   { type: "session",  session_id }
+ *   { type: "token",    delta }
+ *   { type: "sources",  files, highlight_node_id, code_ref }
+ *   { type: "metrics",  ... }
+ *   { type: "done" }
+ *   { type: "error",    message }
+ */
 export async function POST(req: Request) {
+  let body: any;
   try {
-    const body = await req.json();
-    const response = await fetch(`${FASTAPI_URL}/chat/`, {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${FASTAPI_URL}/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-
-    if (!response.ok) {
-      return NextResponse.json({ error: "Failed to communicate with chat agent" }, { status: response.status });
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error("Proxy Error POST chat:", error);
-    return NextResponse.json({ error: "Internal Server Proxy Error" }, { status: 500 });
+  } catch (err) {
+    console.error("Proxy: failed to reach FastAPI", err);
+    return NextResponse.json({ error: "Chat service unreachable" }, { status: 502 });
   }
+
+  if (!upstream.ok || !upstream.body) {
+    const text = await upstream.text().catch(() => "");
+    return NextResponse.json(
+      { error: `Chat service error: ${upstream.status} ${text}` },
+      { status: upstream.status }
+    );
+  }
+
+  // Stream the SSE response through. The browser will receive text/event-stream
+  // frames that the QAChatPanel parses.
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          controller.enqueue(encoder.encode(decoder.decode(value, { stream: true })));
+        }
+        controller.close();
+      } catch (err) {
+        console.error("Proxy: stream error", err);
+        controller.error(err);
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

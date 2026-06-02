@@ -16,7 +16,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Send, Bot, FileCode, Zap, AlertCircle,
+  Send, Bot, FileCode, Zap, AlertCircle, Square,
   ChevronRight, Copy, Check, RefreshCw, Sparkles,
 } from "lucide-react";
 
@@ -30,6 +30,8 @@ interface ChatMessage {
   highlightNodeId?: string;
   codeRef?: { file: string; line_start: number; line_end: number };
   isLoading?: boolean;
+  isStreaming?: boolean;        // True while tokens are still arriving
+  isStopped?: boolean;          // True if user pressed Stop mid-stream
   isError?: boolean;
   timestamp: Date;
 }
@@ -466,7 +468,7 @@ function MessageBubble({
           backdropFilter: "blur(10px)",
         }}
       >
-        {message.isLoading ? (
+        {message.isLoading && !message.content ? (
           <TypingIndicator />
         ) : message.isError ? (
           <div
@@ -483,7 +485,24 @@ function MessageBubble({
             </p>
           </div>
         ) : (
-          <div>{renderMarkdown(message.content)}</div>
+          <div style={{ position: "relative" }}>
+            {renderMarkdown(message.content)}
+            {message.isStreaming && message.content && (
+              <span
+                aria-hidden
+                style={{
+                  display: "inline-block",
+                  width: 7,
+                  height: 13,
+                  marginLeft: 2,
+                  verticalAlign: "-2px",
+                  background: "rgba(165,180,252,0.85)",
+                  borderRadius: 1,
+                  animation: "rh-blink 1s steps(2) infinite",
+                }}
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -498,7 +517,7 @@ function MessageBubble({
       )}
 
       {/* Source file pills */}
-      {!message.isLoading &&
+      {!message.isStreaming &&
         message.sourceFiles &&
         message.sourceFiles.length > 0 && (
           <div
@@ -560,7 +579,10 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
     [handleHighlightNode]
   );
 
-  // Send a message to the QA API
+  // Send a message to the QA API (streaming version, commit 7).
+  // Reads SSE frames from /api/chat and incrementally appends tokens to the
+  // assistant bubble. Cancellable via AbortController.
+  const abortRef = useRef<AbortController | null>(null);
   const sendMessage = useCallback(
     async (query: string) => {
       if (!query.trim() || isLoading) return;
@@ -572,11 +594,13 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
         timestamp: new Date(),
       };
 
+      const assistantId = crypto.randomUUID();
       const loadingMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: assistantId,
         role: "assistant",
         content: "",
         isLoading: true,
+        isStreaming: true,
         timestamp: new Date(),
       };
 
@@ -587,6 +611,16 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
       }
       setIsLoading(true);
 
+      // Cancel any in-flight request
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
+      // Collect sources/highlight as they arrive
+      let collectedHighlight = "";
+      let collectedCodeRef: any = undefined;
+      let collectedSourceFiles: string[] = [];
+
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -595,37 +629,123 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
             repo_id: repoId,
             session_id: sessionId,
             query: query.trim(),
+            valid_node_ids: [],   // populated by commit 8
           }),
+          signal: ctrl.signal,
         });
 
-        if (!res.ok) {
+        if (!res.ok || !res.body) {
           const errBody = await res.json().catch(() => ({}));
           throw new Error(errBody.error || `Server error ${res.status}`);
         }
 
-        const data = await res.json();
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let done = false;
 
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.answer || "I couldn't generate a response.",
-          sourceFiles: data.source_files || [],
-          highlightNodeId: data.highlight_node_id || undefined,
-          codeRef: data.code_ref || undefined,
-          timestamp: new Date(),
-        };
+        while (!done) {
+          const { value, done: streamDone } = await reader.read();
+          done = streamDone;
+          if (value) {
+            buffer += decoder.decode(value, { stream: true });
 
-        setMessages((prev) =>
-          prev.filter((m) => !m.isLoading).concat(assistantMsg)
-        );
+            // SSE frames are separated by "\n\n"
+            const frames = buffer.split("\n\n");
+            buffer = frames.pop() || "";   // last partial frame stays in buffer
 
-        // Auto-highlight the diagram node if the LLM returned one
-        if (data.highlight_node_id) {
-          setTimeout(() => handleHighlightNode(data.highlight_node_id), 400);
+            for (const frame of frames) {
+              // Each frame is "data: <json>" or just a keep-alive ping
+              const line = frame
+                .split("\n")
+                .find((l) => l.startsWith("data: "));
+              if (!line) continue;
+              const payload = line.slice(6).trim();
+              if (!payload) continue;
+              let event: any;
+              try {
+                event = JSON.parse(payload);
+              } catch {
+                continue;
+              }
+
+              if (event.type === "token" && event.delta) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          content: m.content + event.delta,
+                          isLoading: false,
+                          isStreaming: true,
+                        }
+                      : m
+                  )
+                );
+              } else if (event.type === "sources") {
+                collectedHighlight = event.highlight_node_id || "";
+                collectedCodeRef = event.code_ref;
+                collectedSourceFiles = event.files || [];
+              } else if (event.type === "done") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          isLoading: false,
+                          isStreaming: false,
+                          sourceFiles: collectedSourceFiles,
+                          highlightNodeId: collectedHighlight || undefined,
+                          codeRef: collectedCodeRef,
+                        }
+                      : m
+                  )
+                );
+                if (collectedHighlight) {
+                  setTimeout(() => handleHighlightNode(collectedHighlight), 200);
+                }
+              } else if (event.type === "error") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          isLoading: false,
+                          isStreaming: false,
+                          isError: true,
+                          content:
+                            m.content ||
+                            event.message ||
+                            "Something went wrong during streaming.",
+                        }
+                      : m
+                  )
+                );
+              }
+            }
+          }
         }
       } catch (err: any) {
+        if (err?.name === "AbortError") {
+          // User pressed Stop — mark the bubble as stopped
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    isLoading: false,
+                    isStreaming: false,
+                    isStopped: true,
+                    content:
+                      m.content + (m.content ? "\n\n_[stopped]_" : "_[stopped]_"),
+                  }
+                : m
+            )
+          );
+          return;
+        }
         const errorMsg: ChatMessage = {
-          id: crypto.randomUUID(),
+          id: assistantId,
           role: "assistant",
           content:
             err?.message ||
@@ -634,7 +754,7 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
           timestamp: new Date(),
         };
         setMessages((prev) =>
-          prev.filter((m) => !m.isLoading).concat(errorMsg)
+          prev.map((m) => (m.id === assistantId ? errorMsg : m))
         );
       } finally {
         setIsLoading(false);
@@ -642,6 +762,11 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
     },
     [repoId, sessionId, isLoading, handleHighlightNode]
   );
+
+  // Stop the in-flight request (commit 7)
+  const stopGeneration = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -664,6 +789,10 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
         }
         @keyframes rh-spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes rh-blink {
+          0%, 50% { opacity: 0.85; }
+          50.01%, 100% { opacity: 0; }
         }
       `}</style>
 
@@ -863,54 +992,79 @@ export default function QAChatPanel({ repoId }: { repoId: string }) {
                 {repoId.slice(0, 8)}…
               </span>
 
-              {/* Send button */}
-              <button
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() || isLoading}
-                title="Send message (Enter)"
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
-                  background:
-                    input.trim() && !isLoading
+              {/* Send / Stop button */}
+              {isLoading ? (
+                <button
+                  onClick={stopGeneration}
+                  title="Stop generating"
+                  aria-label="Stop generating"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    background: "rgba(244,63,94,0.9)",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    color: "#fff",
+                    flexShrink: 0,
+                    boxShadow: "0 0 12px rgba(244,63,94,0.4)",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.background =
+                      "rgba(244,63,94,1)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.background =
+                      "rgba(244,63,94,0.9)";
+                  }}
+                >
+                  <Square size={10} fill="#fff" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim()}
+                  title="Send message (Enter)"
+                  aria-label="Send message"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    background: input.trim()
                       ? "rgba(99,102,241,0.9)"
                       : "rgba(255,255,255,0.05)",
-                  border: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: input.trim() && !isLoading ? "pointer" : "not-allowed",
-                  transition: "all 0.15s",
-                  color: input.trim() && !isLoading ? "#fff" : "#1e293b",
-                  flexShrink: 0,
-                  boxShadow:
-                    input.trim() && !isLoading
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: input.trim() ? "pointer" : "not-allowed",
+                    transition: "all 0.15s",
+                    color: input.trim() ? "#fff" : "#1e293b",
+                    flexShrink: 0,
+                    boxShadow: input.trim()
                       ? "0 0 12px rgba(99,102,241,0.4)"
                       : "none",
-                }}
-                onMouseEnter={(e) => {
-                  if (input.trim() && !isLoading) {
-                    (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(99,102,241,1)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (input.trim() && !isLoading) {
-                    (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(99,102,241,0.9)";
-                  }
-                }}
-              >
-                {isLoading ? (
-                  <RefreshCw
-                    size={12}
-                    style={{ animation: "rh-spin 1s linear infinite" }}
-                  />
-                ) : (
+                  }}
+                  onMouseEnter={(e) => {
+                    if (input.trim()) {
+                      (e.currentTarget as HTMLButtonElement).style.background =
+                        "rgba(99,102,241,1)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (input.trim()) {
+                      (e.currentTarget as HTMLButtonElement).style.background =
+                        "rgba(99,102,241,0.9)";
+                    }
+                  }}
+                >
                   <Send size={11} />
-                )}
-              </button>
+                </button>
+              )}
             </div>
           </div>
 
