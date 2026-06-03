@@ -235,9 +235,16 @@ async def delete_repository(repo_id: uuid.UUID, db: AsyncSession = Depends(get_d
     # 3. Import related models and delete them
     from sqlalchemy import delete
     from app.models.chat import ChatSession, ChatMessage
+    from app.models.qa_metrics import QAQuery
 
     # Delete Diagrams
     await db.execute(delete(Diagram).where(Diagram.repo_id == repo_id))
+
+    # Delete QAQuery telemetry/metrics
+    try:
+        await db.execute(delete(QAQuery).where(QAQuery.repo_id == repo_id))
+    except Exception as e:
+        print(f"Error deleting QA queries: {e}")
 
     # Delete ChatMessages first (to prevent foreign key violations on chat_sessions)
     try:
@@ -252,9 +259,17 @@ async def delete_repository(repo_id: uuid.UUID, db: AsyncSession = Depends(get_d
     except Exception as e:
         print(f"Error deleting chat sessions: {e}")
 
+    # Delete Chroma Collection
+    try:
+        from app.core.vector_store import get_chroma_client
+        collection_name = f"repo_{str(repo_id).replace('-', '_')}"
+        client = get_chroma_client()
+        client.delete_collection(name=collection_name)
+    except Exception as e:
+        print(f"Error deleting chroma collection: {e}")
+
     # 4. Delete the repository itself
     await db.delete(repo)
     await db.commit()
 
     return {"status": "success", "message": "Repository completely removed."}
-
