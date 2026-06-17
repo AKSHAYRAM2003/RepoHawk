@@ -17,8 +17,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Send, Bot, FileCode, Zap, AlertCircle, Square,
-  ChevronRight, Copy, Check, RefreshCw, Sparkles,
+  ChevronRight, Copy, Check, RefreshCw, Sparkles, ChevronDown, ChevronUp
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,55 +51,28 @@ const SUGGESTIONS = [
   "Describe the overall tech stack",
 ];
 
-// ── Lightweight Markdown Renderer ─────────────────────────────────────────────
+// ── Markdown Components ───────────────────────────────────────────────────────
 
-function renderInline(text: string): React.ReactNode[] {
-  // Parse bold (**text**) and inline code (`text`) within a line
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={i} style={{ color: "#f1f5f9", fontWeight: 700 }}>
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
-      return (
-        <code
-          key={i}
-          style={{
-            background: "rgba(99,102,241,0.15)",
-            color: "#a5b4fc",
-            padding: "1px 5px",
-            borderRadius: 4,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-            fontSize: 11.5,
-          }}
-        >
-          {part.slice(1, -1)}
-        </code>
-      );
-    }
-    return <React.Fragment key={i}>{part}</React.Fragment>;
-  });
-}
-
-function CodeBlock({ lang, code }: { lang: string; code: string }) {
+function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
+  
   const copy = () => {
     navigator.clipboard.writeText(code).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const lineCount = code.split("\n").length;
+  const isLarge = lineCount > 15;
+
   return (
     <div
       style={{
         margin: "8px 0",
         borderRadius: 10,
-        background: "rgba(5,6,12,0.85)",
-        border: "1px solid rgba(255,255,255,0.06)",
+        background: "var(--surface-container-highest)",
+        border: "1px solid var(--outline-variant)",
         overflow: "hidden",
       }}
     >
@@ -106,159 +83,168 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           alignItems: "center",
           justifyContent: "space-between",
           padding: "4px 12px",
-          borderBottom: "1px solid rgba(255,255,255,0.04)",
-          background: "rgba(255,255,255,0.02)",
+          borderBottom: "1px solid var(--outline-variant)",
+          background: "color-mix(in srgb, var(--on-surface) 5%, transparent)",
         }}
       >
         <span
           style={{
             fontSize: 9,
             fontWeight: 700,
-            color: "#334155",
+            color: "var(--on-surface-variant)",
             textTransform: "uppercase",
             letterSpacing: "0.1em",
           }}
         >
           {lang || "code"}
         </span>
-        <button
-          onClick={copy}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: copied ? "#10b981" : "#475569",
-            fontSize: 10,
-            fontWeight: 600,
-            transition: "color 0.2s",
-            padding: "2px 0",
-          }}
-        >
-          {copied ? <Check size={9} /> : <Copy size={9} />}
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          {isLarge && (
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--on-surface-variant)",
+                fontSize: 10,
+                fontWeight: 600,
+                transition: "color 0.2s",
+                padding: "2px 0",
+              }}
+            >
+              {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              {isExpanded ? "Collapse" : "Expand"}
+            </button>
+          )}
+          <button
+            onClick={copy}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: copied ? "#10b981" : "var(--on-surface-variant)",
+              fontSize: 10,
+              fontWeight: 600,
+              transition: "color 0.2s",
+              padding: "2px 0",
+            }}
+          >
+            {copied ? <Check size={9} /> : <Copy size={9} />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
       </div>
+      
       {/* Code content */}
-      <pre
-        style={{
-          padding: "10px 14px",
-          margin: 0,
-          overflowX: "auto",
-          fontSize: 11,
-          lineHeight: 1.7,
-          color: "#a5b4fc",
-          fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
+      <div 
+        style={{ 
+          maxHeight: isExpanded ? (isLarge ? "400px" : "none") : "0", 
+          overflowY: "auto",
+          transition: "max-height 0.3s ease-in-out",
+          display: isExpanded ? "block" : "none",
         }}
       >
-        {code}
-      </pre>
+        <SyntaxHighlighter
+          style={vscDarkPlus as any}
+          language={lang || "text"}
+          PreTag="div"
+          customStyle={{
+            margin: 0,
+            padding: "10px 14px",
+            background: "transparent",
+            fontSize: 11,
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+          }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
+      
+      {isLarge && !isExpanded && (
+        <div 
+          style={{ 
+            padding: "8px 14px", 
+            fontSize: 11, 
+            color: "var(--on-surface-variant)",
+            fontStyle: "italic" 
+          }}
+        >
+          {lineCount} lines hidden...
+        </div>
+      )}
     </div>
   );
 }
 
-function renderMarkdown(text: string): React.ReactNode {
-  // Split on fenced code blocks first
-  const segments = text.split(/(```[\s\S]*?```)/g);
-
-  return (
-    <>
-      {segments.map((seg, si) => {
-        // Code block
-        if (seg.startsWith("```")) {
-          const lines = seg.slice(3).split("\n");
-          const lang = lines[0].trim();
-          const code = lines.slice(1, -1).join("\n");
-          return <CodeBlock key={si} lang={lang} code={code} />;
-        }
-
-        // Regular text — split into paragraphs
-        const paragraphs = seg.split(/\n{2,}/);
-        return (
-          <React.Fragment key={si}>
-            {paragraphs.map((para, pi) => {
-              const lines = para.split("\n");
-
-              // Bullet list detection
-              const allBullets = lines.every((l) => /^[\-\*•]\s/.test(l.trim()));
-              if (allBullets && lines.length > 0 && lines[0].trim()) {
-                return (
-                  <ul
-                    key={pi}
-                    style={{ margin: "5px 0", paddingLeft: 16, listStyle: "none" }}
-                  >
-                    {lines.map((l, li) => (
-                      <li
-                        key={li}
-                        style={{
-                          fontSize: 12.5,
-                          color: "#cbd5e1",
-                          lineHeight: 1.65,
-                          marginBottom: 3,
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 6,
-                        }}
-                      >
-                        <span style={{ color: "#6366f1", marginTop: 2, flexShrink: 0 }}>▸</span>
-                        {renderInline(l.replace(/^[\-\*•]\s/, "").trim())}
-                      </li>
-                    ))}
-                  </ul>
-                );
-              }
-
-              // Numbered list detection
-              const allNumbered = lines.every((l) => /^\d+\.\s/.test(l.trim()));
-              if (allNumbered && lines.length > 0 && lines[0].trim()) {
-                return (
-                  <ol
-                    key={pi}
-                    style={{ margin: "5px 0", paddingLeft: 20 }}
-                  >
-                    {lines.map((l, li) => (
-                      <li
-                        key={li}
-                        style={{
-                          fontSize: 12.5,
-                          color: "#cbd5e1",
-                          lineHeight: 1.65,
-                          marginBottom: 3,
-                        }}
-                      >
-                        {renderInline(l.replace(/^\d+\.\s/, "").trim())}
-                      </li>
-                    ))}
-                  </ol>
-                );
-              }
-
-              // Regular paragraph — preserve single newlines
-              return (
-                <p
-                  key={pi}
-                  style={{
-                    fontSize: 12.5,
-                    color: "#cbd5e1",
-                    lineHeight: 1.7,
-                    margin: "4px 0",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {renderInline(para)}
-                </p>
-              );
-            })}
-          </React.Fragment>
-        );
-      })}
-    </>
-  );
-}
+const MarkdownComponents: import("react-markdown").Components = {
+  p: ({ children }) => (
+    <p style={{ fontSize: 12.5, color: "var(--on-surface-variant)", lineHeight: 1.7, margin: "4px 0" }}>
+      {children}
+    </p>
+  ),
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>
+      {children}
+    </a>
+  ),
+  ul: ({ children }) => (
+    <ul style={{ margin: "5px 0", paddingLeft: 16, listStyle: "none" }}>
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol style={{ margin: "5px 0", paddingLeft: 20 }}>
+      {children}
+    </ol>
+  ),
+  li: ({ children, className }) => {
+    // Basic detection for unordered list items to add custom bullet
+    const isOrdered = className?.includes("ordered");
+    return (
+      <li style={{ fontSize: 12.5, color: "var(--on-surface-variant)", lineHeight: 1.65, marginBottom: 3, display: "flex", alignItems: "flex-start", gap: 6 }}>
+        {!isOrdered && <span style={{ color: "var(--primary)", marginTop: 2, flexShrink: 0 }}>▸</span>}
+        <span style={{flex: 1}}>{children}</span>
+      </li>
+    );
+  },
+  h1: ({ children }) => <div style={{ fontSize: 16, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 4 }}>{children}</div>,
+  h2: ({ children }) => <div style={{ fontSize: 15, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 4 }}>{children}</div>,
+  h3: ({ children }) => <div style={{ fontSize: 14, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6 }}>{children}</div>,
+  h4: ({ children }) => <div style={{ fontSize: 13, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6 }}>{children}</div>,
+  strong: ({ children }) => <strong style={{ color: "var(--on-surface)", fontWeight: 700 }}>{children}</strong>,
+  code({ node, inline, className, children, ...props }: any) {
+    const match = /language-(\w+)/.exec(className || "");
+    const lang = match ? match[1] : "";
+    const code = String(children).replace(/\n$/, "");
+    
+    if (!inline && match) {
+      return <CollapsibleCodeBlock lang={lang} code={code} />;
+    }
+    
+    return (
+      <code
+        style={{
+          background: "color-mix(in srgb, var(--primary) 15%, transparent)",
+          color: "var(--primary)",
+          padding: "1px 5px",
+          borderRadius: 4,
+          fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+          fontSize: 11.5,
+        }}
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  },
+};
 
 // ── Typing Indicator ──────────────────────────────────────────────────────────
 
@@ -272,7 +258,7 @@ function TypingIndicator() {
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: "#6366f1",
+            background: "var(--primary)",
             animation: `rh-typingBounce 1.3s ease-in-out ${i * 0.22}s infinite`,
           }}
         />
@@ -300,10 +286,10 @@ function SourcePill({
         alignItems: "center",
         gap: 4,
         padding: "2px 8px",
-        background: "rgba(99,102,241,0.1)",
-        border: "1px solid rgba(99,102,241,0.22)",
+        background: "color-mix(in srgb, var(--primary) 10%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--primary) 22%, transparent)",
         borderRadius: 5,
-        color: "#818cf8",
+        color: "var(--primary)",
         fontSize: 10.5,
         fontFamily: "'JetBrains Mono', monospace",
         cursor: "pointer",
@@ -314,13 +300,13 @@ function SourcePill({
         const el = e.currentTarget as HTMLButtonElement;
         el.style.background = "rgba(99,102,241,0.22)";
         el.style.borderColor = "rgba(99,102,241,0.5)";
-        el.style.color = "#a5b4fc";
+        el.style.color = "color-mix(in srgb, var(--primary) 60%, white)";
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLButtonElement;
         el.style.background = "rgba(99,102,241,0.1)";
         el.style.borderColor = "rgba(99,102,241,0.22)";
-        el.style.color = "#818cf8";
+        el.style.color = "color-mix(in srgb, var(--primary) 80%, white)";
       }}
     >
       <FileCode size={9} />
@@ -347,10 +333,10 @@ function NodeHighlightPill({
         alignItems: "center",
         gap: 5,
         padding: "3px 11px",
-        background: "rgba(99,102,241,0.15)",
-        border: "1px solid rgba(99,102,241,0.4)",
+        background: "color-mix(in srgb, var(--primary) 15%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--primary) 40%, transparent)",
         borderRadius: 20,
-        color: "#a5b4fc",
+        color: "var(--primary)",
         fontSize: 11,
         fontWeight: 600,
         cursor: "pointer",
@@ -395,9 +381,8 @@ function MessageBubble({
         <div
           style={{
             maxWidth: "86%",
-            background:
-              "linear-gradient(135deg, rgba(99,102,241,0.22), rgba(139,92,246,0.15))",
-            border: "1px solid rgba(99,102,241,0.28)",
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--primary) 22%, transparent), color-mix(in srgb, var(--secondary) 15%, transparent))",
+            border: "1px solid color-mix(in srgb, var(--primary) 28%, transparent)",
             borderRadius: "13px 13px 4px 13px",
             padding: "8px 13px",
           }}
@@ -405,7 +390,7 @@ function MessageBubble({
           <p
             style={{
               fontSize: 12.5,
-              color: "#e2e8f0",
+              color: "var(--on-surface)",
               lineHeight: 1.55,
               margin: 0,
             }}
@@ -435,21 +420,21 @@ function MessageBubble({
             width: 22,
             height: 22,
             borderRadius: 7,
-            background: "rgba(99,102,241,0.18)",
-            border: "1px solid rgba(99,102,241,0.3)",
+            background: "color-mix(in srgb, var(--primary) 18%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
           }}
         >
-          <Bot size={12} style={{ color: "#6366f1" }} />
+          <Bot size={12} style={{ color: "var(--primary)" }} />
         </div>
         <span
           style={{
             fontSize: 9.5,
             fontWeight: 800,
-            color: "#334155",
+            color: "var(--on-surface-variant)",
             letterSpacing: "0.1em",
             textTransform: "uppercase",
           }}
@@ -461,7 +446,7 @@ function MessageBubble({
       {/* Content area */}
       <div
         style={{
-          background: "rgba(12,14,22,0.85)",
+          background: "var(--surface-container-high)",
           border: `1px solid ${message.isError ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.06)"}`,
           borderRadius: "4px 13px 13px 13px",
           padding: "10px 13px",
@@ -486,7 +471,12 @@ function MessageBubble({
           </div>
         ) : (
           <div style={{ position: "relative" }}>
-            {renderMarkdown(message.content)}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={MarkdownComponents}
+            >
+              {message.content}
+            </ReactMarkdown>
             {message.isStreaming && message.content && (
               <span
                 aria-hidden
@@ -721,8 +711,8 @@ export default function QAChatPanel({
           if (value) {
             buffer += decoder.decode(value, { stream: true });
 
-            // SSE frames are separated by "\n\n"
-            const frames = buffer.split("\n\n");
+            // SSE frames are separated by double newlines
+            const frames = buffer.split(/\r?\n\r?\n/);
             buffer = frames.pop() || "";   // last partial frame stays in buffer
 
             for (const frame of frames) {
@@ -888,7 +878,7 @@ export default function QAChatPanel({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#475569",
+              color: "var(--on-surface-variant)",
               fontSize: 11.5,
             }}
           >
@@ -920,16 +910,15 @@ export default function QAChatPanel({
                 width: 52,
                 height: 52,
                 borderRadius: 16,
-                background:
-                  "linear-gradient(135deg, rgba(99,102,241,0.28), rgba(139,92,246,0.14))",
-                border: "1px solid rgba(99,102,241,0.38)",
+                background: "linear-gradient(135deg, color-mix(in srgb, var(--primary) 28%, transparent), color-mix(in srgb, var(--secondary) 14%, transparent))",
+                border: "1px solid color-mix(in srgb, var(--primary) 38%, transparent)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 0 28px rgba(99,102,241,0.2)",
+                boxShadow: "0 0 28px color-mix(in srgb, var(--primary) 20%, transparent)",
               }}
             >
-              <Sparkles size={22} style={{ color: "#6366f1" }} />
+              <Sparkles size={22} style={{ color: "var(--primary)" }} />
             </div>
 
             <div style={{ textAlign: "center", maxWidth: 230 }}>
@@ -937,7 +926,7 @@ export default function QAChatPanel({
                 style={{
                   fontSize: 13,
                   fontWeight: 700,
-                  color: "#e2e8f0",
+                  color: "var(--on-surface)",
                   margin: "0 0 5px",
                 }}
               >
@@ -946,7 +935,7 @@ export default function QAChatPanel({
               <p
                 style={{
                   fontSize: 11.5,
-                  color: "#475569",
+                  color: "var(--on-surface-variant)",
                   lineHeight: 1.6,
                   margin: 0,
                 }}
@@ -968,15 +957,16 @@ export default function QAChatPanel({
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
-                  onClick={() => sendMessage(s)}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); sendMessage(s); }}
                   style={{
                     width: "100%",
                     textAlign: "left",
                     padding: "7px 11px",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.07)",
+                    background: "color-mix(in srgb, var(--on-surface) 5%, transparent)",
+                    border: "1px solid var(--outline-variant)",
                     borderRadius: 9,
-                    color: "#64748b",
+                    color: "var(--on-surface-variant)",
                     fontSize: 11.5,
                     cursor: "pointer",
                     display: "flex",
@@ -988,18 +978,18 @@ export default function QAChatPanel({
                     const el = e.currentTarget as HTMLButtonElement;
                     el.style.background = "rgba(99,102,241,0.08)";
                     el.style.borderColor = "rgba(99,102,241,0.22)";
-                    el.style.color = "#c7d2fe";
+                    el.style.color = "color-mix(in srgb, var(--primary) 40%, white)";
                   }}
                   onMouseLeave={(e) => {
                     const el = e.currentTarget as HTMLButtonElement;
                     el.style.background = "rgba(255,255,255,0.03)";
                     el.style.borderColor = "rgba(255,255,255,0.07)";
-                    el.style.color = "#64748b";
+                    el.style.color = "var(--on-surface-variant)";
                   }}
                 >
                   <ChevronRight
                     size={10}
-                    style={{ flexShrink: 0, color: "#6366f1" }}
+                    style={{ flexShrink: 0, color: "var(--primary)" }}
                   />
                   {s}
                 </button>
@@ -1035,8 +1025,8 @@ export default function QAChatPanel({
         <div
           style={{
             padding: "8px 12px 12px",
-            borderTop: "1px solid rgba(255,255,255,0.04)",
-            background: "rgba(6,7,14,0.7)",
+            borderTop: "1px solid var(--outline-variant)",
+            background: "color-mix(in srgb, var(--surface-container) 70%, transparent)",
             backdropFilter: "blur(12px)",
           }}
         >
@@ -1045,8 +1035,8 @@ export default function QAChatPanel({
               display: "flex",
               flexDirection: "column",
               gap: 6,
-              background: "rgba(14,16,26,0.95)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "var(--surface-container-highest)",
+              border: "1px solid var(--outline-variant)",
               borderRadius: 12,
               padding: "9px 11px 7px",
             }}
@@ -1064,14 +1054,14 @@ export default function QAChatPanel({
                 border: "none",
                 outline: "none",
                 resize: "none",
-                color: "#e2e8f0",
+                color: "var(--on-surface)",
                 fontSize: 12.5,
                 lineHeight: 1.6,
                 fontFamily: "inherit",
                 minHeight: 20,
                 maxHeight: 110,
                 overflowY: "auto",
-                caretColor: "#6366f1",
+                caretColor: "var(--primary)",
               }}
             />
             <div
@@ -1083,7 +1073,7 @@ export default function QAChatPanel({
             >
               {/* Session hint */}
               <span
-                style={{ fontSize: 9.5, color: "#1e293b", fontFamily: "monospace" }}
+                style={{ fontSize: 9.5, color: "var(--on-surface-variant)", fontFamily: "monospace" }}
               >
                 {repoId.slice(0, 8)}…
               </span>
@@ -1091,7 +1081,8 @@ export default function QAChatPanel({
               {/* Send / Stop button */}
               {isLoading ? (
                 <button
-                  onClick={stopGeneration}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); stopGeneration(); }}
                   title="Stop generating"
                   aria-label="Stop generating"
                   style={{
@@ -1105,7 +1096,7 @@ export default function QAChatPanel({
                     justifyContent: "center",
                     cursor: "pointer",
                     transition: "all 0.15s",
-                    color: "#fff",
+                    color: "white",
                     flexShrink: 0,
                     boxShadow: "0 0 12px rgba(244,63,94,0.4)",
                   }}
@@ -1118,11 +1109,12 @@ export default function QAChatPanel({
                       "rgba(244,63,94,0.9)";
                   }}
                 >
-                  <Square size={10} fill="#fff" />
+                  <Square size={10} fill="currentColor" />
                 </button>
               ) : (
                 <button
-                  onClick={() => sendMessage(input)}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); sendMessage(input); }}
                   disabled={!input.trim()}
                   title="Send message (Enter)"
                   aria-label="Send message"
@@ -1131,30 +1123,30 @@ export default function QAChatPanel({
                     height: 28,
                     borderRadius: 8,
                     background: input.trim()
-                      ? "rgba(99,102,241,0.9)"
-                      : "rgba(255,255,255,0.05)",
+                      ? "var(--primary)"
+                      : "color-mix(in srgb, var(--on-surface) 5%, transparent)",
                     border: "none",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: input.trim() ? "pointer" : "not-allowed",
                     transition: "all 0.15s",
-                    color: input.trim() ? "#fff" : "#1e293b",
+                    color: input.trim() ? "var(--on-primary)" : "var(--on-surface-variant)",
                     flexShrink: 0,
                     boxShadow: input.trim()
-                      ? "0 0 12px rgba(99,102,241,0.4)"
+                      ? "0 0 12px color-mix(in srgb, var(--primary) 40%, transparent)"
                       : "none",
                   }}
                   onMouseEnter={(e) => {
                     if (input.trim()) {
                       (e.currentTarget as HTMLButtonElement).style.background =
-                        "rgba(99,102,241,1)";
+                        "color-mix(in srgb, var(--primary) 85%, white)";
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (input.trim()) {
                       (e.currentTarget as HTMLButtonElement).style.background =
-                        "rgba(99,102,241,0.9)";
+                        "var(--primary)";
                     }
                   }}
                 >
@@ -1177,7 +1169,7 @@ export default function QAChatPanel({
               style={{
                 margin: 0,
                 fontSize: 9.5,
-                color: "#1e293b",
+                color: "var(--on-surface-variant)",
                 textAlign: "center",
                 flex: 1,
               }}
@@ -1194,7 +1186,7 @@ export default function QAChatPanel({
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
-                    color: "#1e293b",
+                    color: "var(--on-surface-variant)",
                     fontSize: 9.5,
                     display: "flex",
                     alignItems: "center",
@@ -1203,10 +1195,10 @@ export default function QAChatPanel({
                     transition: "color 0.15s",
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = "#64748b";
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = "#1e293b";
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
                   }}
                 >
                   <RefreshCw size={9} /> new
@@ -1221,7 +1213,7 @@ export default function QAChatPanel({
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
-                    color: "#1e293b",
+                    color: "var(--on-surface-variant)",
                     fontSize: 9.5,
                     display: "flex",
                     alignItems: "center",
@@ -1230,10 +1222,10 @@ export default function QAChatPanel({
                     transition: "color 0.15s",
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = "#64748b";
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = "#1e293b";
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
                   }}
                 >
                   📊 metrics
@@ -1319,8 +1311,8 @@ function MetricsModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "rgba(8,9,14,0.98)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "var(--surface-container-high)",
+          border: "1px solid var(--outline-variant)",
           borderRadius: 14,
           maxWidth: 600,
           width: "100%",
@@ -1337,7 +1329,7 @@ function MetricsModal({
             marginBottom: 14,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 14, color: "#e2e8f0", fontWeight: 700 }}>
+          <h3 style={{ margin: 0, fontSize: 14, color: "var(--on-surface)", fontWeight: 700 }}>
             Query Telemetry
           </h3>
           <button
@@ -1346,7 +1338,7 @@ function MetricsModal({
             style={{
               background: "transparent",
               border: "none",
-              color: "#64748b",
+              color: "var(--on-surface-variant)",
               cursor: "pointer",
               fontSize: 18,
               lineHeight: 1,
@@ -1357,11 +1349,11 @@ function MetricsModal({
         </div>
 
         {loading ? (
-          <p style={{ color: "#475569", fontSize: 12, textAlign: "center", padding: 24 }}>
+          <p style={{ color: "var(--on-surface-variant)", fontSize: 12, textAlign: "center", padding: 24 }}>
             Loading…
           </p>
         ) : rows.length === 0 ? (
-          <p style={{ color: "#475569", fontSize: 12, textAlign: "center", padding: 24 }}>
+          <p style={{ color: "var(--on-surface-variant)", fontSize: 12, textAlign: "center", padding: 24 }}>
             No metrics yet. Send a message to record telemetry.
           </p>
         ) : (
@@ -1370,8 +1362,8 @@ function MetricsModal({
               <div
                 key={r.id}
                 style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "color-mix(in srgb, var(--on-surface) 5%, transparent)",
+                  border: "1px solid var(--outline-variant)",
                   borderRadius: 8,
                   padding: "9px 11px",
                 }}
@@ -1380,7 +1372,7 @@ function MetricsModal({
                   style={{
                     margin: "0 0 4px",
                     fontSize: 11.5,
-                    color: "#cbd5e1",
+                    color: "var(--on-surface-variant)",
                     fontWeight: 600,
                     lineHeight: 1.4,
                   }}
@@ -1393,7 +1385,7 @@ function MetricsModal({
                     flexWrap: "wrap",
                     gap: 8,
                     fontSize: 10,
-                    color: "#64748b",
+                    color: "var(--on-surface-variant)",
                   }}
                 >
                   <span>🕒 {r.latency_total_ms}ms</span>
