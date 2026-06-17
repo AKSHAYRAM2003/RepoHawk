@@ -642,8 +642,8 @@ async def astream_qa_answer(
         # arrive in real time. The structured parse happens at the end of the stream.
         full_text = ""
         try:
-            stream = llm.stream(messages)
-            for chunk in stream:
+            stream = llm.astream(messages)
+            async for chunk in stream:
                 delta = getattr(chunk, "content", None) or ""
                 if delta:
                     full_text += delta
