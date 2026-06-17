@@ -148,8 +148,15 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.2, timeout: floa
 
 # Pre-configured clients for each agent role
 def get_chat_llm() -> ChatOpenAI:
-    """Q&A Agent — high token budget (Nemotron 30B). Temperature 0.1 for grounded code answers."""
-    return get_llm(model=settings.MODEL_CHAT, temperature=0.1)
+    """Q&A Agent — high token budget (gpt-oss-20b). Temperature 0.1 for grounded code answers.
+    Timeout reduced to 45s: free-tier models that stall >45s are unlikely to recover."""
+    return get_llm(model=settings.MODEL_CHAT, temperature=0.1, timeout=45.0)
+
+
+def get_rewrite_llm() -> ChatOpenAI:
+    """Query Rewriting — cheap fast model (qwen-2-7b). Short response, plain text output.
+    Separate from get_chat_llm so we don't burn the main model token budget on rewrites."""
+    return get_llm(model=settings.MODEL_REWRITE, temperature=0.0, timeout=15.0)
 
 
 def get_diagram_llm() -> ChatOpenAI:

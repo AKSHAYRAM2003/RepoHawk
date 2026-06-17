@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Optional, AsyncGenerator
 from pydantic import BaseModel, Field
 
 from app.agents.state import QAState, CodeRef
-from app.core.llm import get_chat_llm, invoke_with_fallback
+from app.core.llm import get_chat_llm, get_rewrite_llm, invoke_with_fallback
 from app.core.embeddings import get_embeddings
 from app.core.vector_store import get_chroma_client
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -30,8 +30,10 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 logger = logging.getLogger("repohawk.qa_agent")
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-TOP_K = 6
-RELEVANCE_THRESHOLD = 0.65      # cosine distance; lower is better. Drop chunks above this.
+TOP_K = 8                        # Retrieve more candidates for the filter to work with
+RELEVANCE_THRESHOLD = 0.88       # cosine distance; lower = more similar. 0.88 is lenient enough
+                                  # for real code-question pairs which typically score 0.75–1.15.
+RELEVANCE_FLOOR_CHUNKS = 2       # If filter drops ALL chunks, keep the N closest as best-effort
 MAX_HISTORY_TOKENS = 1500        # Rough cap for the chat history we send to the LLM
 QUERY_REWRITE_MAX_HISTORY = 2    # Last N turns to use for query rewriting
 
@@ -107,38 +109,50 @@ Rules:
 
 async def rewrite_query(question: str, chat_history: List) -> str:
     """
-    Rewrites the user's question into a self-contained, search-optimized query
-    using the last few turns of context. Falls back to the original question on
-    any error so retrieval still works.
+    Rewrites the user's question into a self-contained, search-optimized query.
+    CRITICAL: This is a non-blocking, best-effort optimization. It MUST NOT
+    block the main LLM path. A hard 5-second asyncio timeout ensures it fails
+    fast on rate limits, network stalls, or model unavailability.
+
+    Skip entirely if there's no prior history — no disambiguation needed.
+    Falls back to the original question on any error.
     """
-    if not chat_history or len(chat_history) < 2:
+    if not chat_history:
         return question
 
-    try:
+    import asyncio
+
+    async def _do_rewrite() -> str:
+        from langchain_core.messages import SystemMessage, HumanMessage
+
         history_text = []
         for msg in chat_history[-(QUERY_REWRITE_MAX_HISTORY * 2):]:
             role = "user" if isinstance(msg, HumanMessage) else "assistant" if isinstance(msg, AIMessage) else "other"
             content = getattr(msg, "content", "") or ""
             if content:
                 history_text.append(f"{role}: {content[:300]}")
-        history_block = "\n".join(history_text)
+        history_block = "\n".join(history_text) if history_text else "(no prior conversation)"
 
-        from app.core.llm import _invoke_with_retry
-        from langchain_core.messages import SystemMessage, HumanMessage
         messages = [
             SystemMessage(content=REWRITE_SYSTEM_PROMPT),
             HumanMessage(content=f"CHAT HISTORY:\n{history_block}\n\nCURRENT QUESTION:\n{question}"),
         ]
-        # Use a cheap model for rewriting (same as chat, but this is fast & short)
-        llm = get_chat_llm()
-        result = _invoke_with_retry(llm, messages)
-        rewritten = (result.get("answer") or "").strip() if isinstance(result, dict) else (getattr(result, "content", "") or "").strip()
+        llm = get_rewrite_llm()
+        result = llm.invoke(messages)
+        rewritten = (getattr(result, "content", "") or "").strip()
         if rewritten and len(rewritten) <= len(question) * 4 + 200:
-            logger.info(f"QA Agent: Rewrote query '{question[:60]}' -> '{rewritten[:60]}'")
+            if rewritten != question:
+                logger.info(f"QA Agent: Rewrote query '{question[:60]}' -> '{rewritten[:60]}'")
             return rewritten
         return question
+
+    try:
+        return await asyncio.wait_for(_do_rewrite(), timeout=5.0)
+    except asyncio.TimeoutError:
+        logger.debug("QA Agent: Query rewriting timed out (5s), using original question")
+        return question
     except Exception as e:
-        logger.warning(f"QA Agent: Query rewriting failed ({e}), using original question")
+        logger.debug(f"QA Agent: Query rewriting failed ({type(e).__name__}), using original question")
         return question
 
 
@@ -283,23 +297,37 @@ def qa_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         # Also filter out chunks marked embed_failed (defensive — added in commit 6).
         filtered_chunks: List[str] = []
         filtered_metadatas: List[Dict] = []
+        ranked_pairs = []  # track (dist, chunk, meta) for fallback
         for chunk, meta, dist in zip(raw_chunks, raw_metadatas, raw_distances or [0.0] * len(raw_chunks)):
             if meta.get("embed_failed"):
                 continue
-            if raw_distances and dist is not None and dist > RELEVANCE_THRESHOLD:
-                continue
-            filtered_chunks.append(chunk)
-            filtered_metadatas.append(meta)
+            d = dist if dist is not None else 1.0
+            ranked_pairs.append((d, chunk, meta))
+            if not (raw_distances and d > RELEVANCE_THRESHOLD):
+                filtered_chunks.append(chunk)
+                filtered_metadatas.append(meta)
 
         if not filtered_chunks:
-            return {
-                "answer": (
-                    "I searched the codebase but none of the indexed code is closely related "
-                    "to your question. Try rephrasing or asking about a different aspect of the code."
-                ),
-                "source_files": [],
-                "retrieved_chunks": [],
-            }
+            # Adaptive fallback: threshold filtered everything out — use the N closest
+            # chunks as best-effort context so the LLM can still attempt an answer.
+            ranked_pairs.sort(key=lambda x: x[0])
+            best = ranked_pairs[:RELEVANCE_FLOOR_CHUNKS]
+            if best:
+                logger.warning(
+                    f"QA Agent: All chunks exceeded threshold; using top-{len(best)} closest "
+                    f"(distances: {[round(d,3) for d,_,_ in best]}) as best-effort context."
+                )
+                filtered_chunks = [c for _, c, _ in best]
+                filtered_metadatas = [m for _, _, m in best]
+            else:
+                return {
+                    "answer": (
+                        "I searched the codebase but couldn't find any relevant code for your question. "
+                        "Try rephrasing or asking about a specific file or function."
+                    ),
+                    "source_files": [],
+                    "retrieved_chunks": [],
+                }
 
         chunks = filtered_chunks
         metadatas = filtered_metadatas
@@ -440,19 +468,18 @@ async def astream_qa_answer(
     yield {"type": "session", "session_id": session_id}
 
     try:
-        # 1. Query rewriting
+        # 1. Query rewriting (always run — falls back gracefully if no history)
         rewritten_question = question
-        if chat_history and len(chat_history) >= 2:
-            try:
-                rewritten_question = await rewrite_query(question, chat_history)
-            except Exception as e:
-                logger.warning(f"QA stream: rewrite failed ({e}), using original")
-                rewritten_question = question
+        try:
+            rewritten_question = await rewrite_query(question, chat_history)
+        except Exception as e:
+            logger.warning(f"QA stream: rewrite failed ({e}), using original")
+            rewritten_question = question
 
-        # 2. Embed
+        # 2. Embed (async to avoid blocking the event loop)
         embeddings_client = get_embeddings()
         try:
-            query_vector = embeddings_client.embed_query(rewritten_question)
+            query_vector = await embeddings_client.embed_query_async(rewritten_question)
         except Exception as embed_err:
             yield {"type": "error", "message": f"Embedding service unavailable: {embed_err}"}
             yield {
@@ -527,36 +554,50 @@ async def astream_qa_answer(
         # Apply relevance threshold + filter out embed_failed chunks
         chunks: List[str] = []
         metadatas: List[Dict] = []
+        ranked_pairs_stream = []  # (dist, chunk, meta) for adaptive fallback
         for chunk, meta, dist in zip(raw_chunks, raw_metadatas, raw_distances or [0.0] * len(raw_chunks)):
             if meta.get("embed_failed"):
                 continue
-            if raw_distances and dist is not None and dist > RELEVANCE_THRESHOLD:
-                continue
-            chunks.append(chunk)
-            metadatas.append(meta)
-        num_chunks_kept = len(chunks)
+            d = dist if dist is not None else 1.0
+            ranked_pairs_stream.append((d, chunk, meta))
+            if not (raw_distances and d > RELEVANCE_THRESHOLD):
+                chunks.append(chunk)
+                metadatas.append(meta)
         retrieval_ms = int((_time.monotonic() - retrieval_start) * 1000)
 
         if not chunks:
-            yield {
-                "type": "token",
-                "delta": (
-                    "I searched the codebase but none of the indexed code is closely related "
-                    "to your question. Try rephrasing or asking about a different aspect of the code."
-                ),
-            }
-            yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
-            yield {
-                "type": "metrics",
-                "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
-                "num_chunks_retrieved": num_chunks_retrieved,
-                "num_chunks_kept": 0,
-                "latency_retrieval_ms": retrieval_ms,
-                "latency_llm_ms": 0,
-                "rewritten_question": rewritten_question,
-            }
-            yield {"type": "done"}
-            return
+            # Adaptive fallback: use the N closest chunks so the LLM still runs.
+            ranked_pairs_stream.sort(key=lambda x: x[0])
+            best = ranked_pairs_stream[:RELEVANCE_FLOOR_CHUNKS]
+            if best:
+                logger.warning(
+                    f"QA stream: All chunks exceeded threshold; using top-{len(best)} closest "
+                    f"(distances: {[round(d,3) for d,_,_ in best]}) as best-effort context."
+                )
+                chunks = [c for _, c, _ in best]
+                metadatas = [m for _, _, m in best]
+            else:
+                yield {
+                    "type": "token",
+                    "delta": (
+                        "I searched the codebase but couldn't find any relevant code for your question. "
+                        "Try rephrasing or asking about a specific file or function."
+                    ),
+                }
+                yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+                yield {
+                    "type": "metrics",
+                    "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                    "num_chunks_retrieved": num_chunks_retrieved,
+                    "num_chunks_kept": 0,
+                    "latency_retrieval_ms": retrieval_ms,
+                    "latency_llm_ms": 0,
+                    "rewritten_question": rewritten_question,
+                }
+                yield {"type": "done"}
+                return
+
+        num_chunks_kept = len(chunks)
 
         # 4. Build context + LLM messages
         context_parts = []

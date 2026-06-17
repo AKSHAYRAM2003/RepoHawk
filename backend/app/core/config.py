@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     MODEL_DIAGRAM: str = "openai/gpt-oss-120b:free"
     MODEL_CRITIQUE: str = "openai/gpt-oss-120b:free"
     MODEL_EMBED: str = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
-    MODEL_FALLBACK: str = "openai/gpt-oss-20b:free"
+    MODEL_FALLBACK: str = "meta-llama/llama-3.2-3b-instruct:free"
+    MODEL_REWRITE: str = "meta-llama/llama-3.2-3b-instruct:free"   # cheap fast model for query rewriting
     
     # Chroma
     CHROMA_HOST: str = "localhost"

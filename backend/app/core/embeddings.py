@@ -7,6 +7,8 @@ tokenizer-based chunking that is incompatible with OpenRouter's API contract.
 Improvements in this iteration:
   - LRU cache for repeated queries (commit 4)
   - Same model, same dimension, same key — cache key is the question text
+  - Async path (embed_query_async / embed_documents_async) for use in async
+    FastAPI handlers to avoid blocking the event loop (Phase B fix).
 """
 
 import hashlib
@@ -103,11 +105,11 @@ class OpenRouterEmbeddings:
         return [item["embedding"] for item in embedding_data]
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed a list of document texts. (No cache — document embeddings are usually unique.)"""
+        """Embed a list of document texts (sync). No cache — document embeddings are usually unique."""
         return self._call_api(texts)
 
     def embed_query(self, text: str) -> List[float]:
-        """Embed a single query string. Uses the LRU cache."""
+        """Embed a single query string (sync). Uses the LRU cache."""
         if self._use_cache:
             key = _cache_key(text)
             cached = self._local_cache.get(key)
@@ -119,6 +121,45 @@ class OpenRouterEmbeddings:
             self._local_cache.set(key, vec)
             return vec
         return self._call_api([text])[0]
+
+    # ── Async paths (Phase B) ─────────────────────────────────────────────────
+    async def _call_api_async(self, texts: List[str]) -> List[List[float]]:
+        """Async HTTP POST to the embeddings endpoint. Doesn't block the event loop."""
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.post(
+                f"{self.base_url}/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": self.model, "input": texts},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        embedding_data = data.get("data", [])
+        if not embedding_data:
+            raise ValueError(f"No embedding data received from OpenRouter. Response: {data}")
+        embedding_data.sort(key=lambda x: x.get("index", 0))
+        return [item["embedding"] for item in embedding_data]
+
+    async def embed_query_async(self, text: str) -> List[float]:
+        """Embed a single query string (async). Uses the LRU cache. Safe inside async handlers."""
+        if self._use_cache:
+            key = _cache_key(text)
+            cached = self._local_cache.get(key)
+            if cached is not None:
+                logger.debug(f"embeddings async: cache HIT for {text[:40]!r}")
+                return cached
+            logger.debug(f"embeddings async: cache MISS for {text[:40]!r}")
+            vec = (await self._call_api_async([text]))[0]
+            self._local_cache.set(key, vec)
+            return vec
+        return (await self._call_api_async([text]))[0]
+
+    async def embed_documents_async(self, texts: List[str]) -> List[List[float]]:
+        """Embed a list of documents (async). No cache."""
+        return await self._call_api_async(texts)
 
     def cache_stats(self) -> dict:
         """Return basic cache stats (for debugging/telemetry)."""
