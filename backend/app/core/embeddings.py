@@ -1,14 +1,6 @@
 """
 RepoHawk Embeddings Client
-Uses direct HTTP calls to OpenRouter's embeddings endpoint.
-LangChain's OpenAIEmbeddings client is NOT used here because it applies
-tokenizer-based chunking that is incompatible with OpenRouter's API contract.
-
-Improvements in this iteration:
-  - LRU cache for repeated queries (commit 4)
-  - Same model, same dimension, same key — cache key is the question text
-  - Async path (embed_query_async / embed_documents_async) for use in async
-    FastAPI handlers to avoid blocking the event loop (Phase B fix).
+Uses sentence-transformers for local, instant embedding (no API latency).
 """
 
 import hashlib
@@ -17,11 +9,12 @@ import threading
 from collections import OrderedDict
 from typing import List, Optional
 
-import httpx
-
-from app.core.config import settings
+import numpy as np
 
 logger = logging.getLogger("repohawk.embeddings")
+
+LOCAL_MODEL = "all-MiniLM-L6-v2"
+EMBED_DIM = 384
 
 
 class _LRUCache:
@@ -56,7 +49,6 @@ class _LRUCache:
             return len(self._data)
 
 
-# Process-wide cache. Default 256 entries (~256KB for 2048-dim float vectors).
 _query_cache = _LRUCache(capacity=256)
 
 
@@ -64,112 +56,81 @@ def _cache_key(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
 
 
-class OpenRouterEmbeddings:
+_model_lock = threading.Lock()
+_model_instance = None
+
+
+def _get_model():
+    global _model_instance
+    if _model_instance is not None:
+        return _model_instance
+    with _model_lock:
+        if _model_instance is not None:
+            return _model_instance
+        from sentence_transformers import SentenceTransformer
+        logger.info(f"Loading local embedding model: {LOCAL_MODEL}")
+        _model_instance = SentenceTransformer(LOCAL_MODEL)
+        logger.info(f"Local embedding model loaded (dim={EMBED_DIM})")
+        return _model_instance
+
+
+class LocalEmbeddings:
     """
-    Thin wrapper for OpenRouter's /v1/embeddings endpoint.
-    Generates text embedding vectors via the configured MODEL_EMBED.
+    Local embedding via sentence-transformers. Sub-millisecond per query after model load.
     """
 
     def __init__(self, *, use_cache: bool = True, cache_capacity: int = 256):
-        self.api_key = settings.OPENROUTER_API_KEY
-        self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
-        self.model = settings.MODEL_EMBED
-        self.timeout = 60
         self._use_cache = use_cache
-        # If a custom capacity is requested, replace the global cache
-        # with a new instance scoped to this embeddings client.
         if cache_capacity != 256:
             self._local_cache = _LRUCache(capacity=cache_capacity)
         else:
             self._local_cache = _query_cache
 
-    def _call_api(self, texts: List[str]) -> List[List[float]]:
-        """Makes a single HTTP POST to the embeddings endpoint."""
-        resp = httpx.post(
-            f"{self.base_url}/embeddings",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            json={"model": self.model, "input": texts},
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        embedding_data = data.get("data", [])
-        if not embedding_data:
-            raise ValueError(f"No embedding data received from OpenRouter. Response: {data}")
-
-        embedding_data.sort(key=lambda x: x.get("index", 0))
-        return [item["embedding"] for item in embedding_data]
+    def _embed(self, texts: List[str]) -> List[List[float]]:
+        model = _get_model()
+        emb = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
+        if isinstance(emb, np.ndarray):
+            emb = emb.tolist()
+        return emb
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed a list of document texts (sync). No cache — document embeddings are usually unique."""
-        return self._call_api(texts)
+        return self._embed(texts)
 
     def embed_query(self, text: str) -> List[float]:
-        """Embed a single query string (sync). Uses the LRU cache."""
         if self._use_cache:
             key = _cache_key(text)
             cached = self._local_cache.get(key)
             if cached is not None:
-                logger.debug(f"embeddings: cache HIT for {text[:40]!r}")
                 return cached
-            logger.debug(f"embeddings: cache MISS for {text[:40]!r}")
-            vec = self._call_api([text])[0]
+            vec = self._embed([text])[0]
             self._local_cache.set(key, vec)
             return vec
-        return self._call_api([text])[0]
-
-    # ── Async paths (Phase B) ─────────────────────────────────────────────────
-    async def _call_api_async(self, texts: List[str]) -> List[List[float]]:
-        """Async HTTP POST to the embeddings endpoint. Doesn't block the event loop."""
-        import httpx as _httpx
-        async with _httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                f"{self.base_url}/embeddings",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": self.model, "input": texts},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        embedding_data = data.get("data", [])
-        if not embedding_data:
-            raise ValueError(f"No embedding data received from OpenRouter. Response: {data}")
-        embedding_data.sort(key=lambda x: x.get("index", 0))
-        return [item["embedding"] for item in embedding_data]
+        return self._embed([text])[0]
 
     async def embed_query_async(self, text: str) -> List[float]:
-        """Embed a single query string (async). Uses the LRU cache. Safe inside async handlers."""
+        import asyncio
+        loop = asyncio.get_event_loop()
         if self._use_cache:
             key = _cache_key(text)
             cached = self._local_cache.get(key)
             if cached is not None:
-                logger.debug(f"embeddings async: cache HIT for {text[:40]!r}")
                 return cached
-            logger.debug(f"embeddings async: cache MISS for {text[:40]!r}")
-            vec = (await self._call_api_async([text]))[0]
+            vec = await loop.run_in_executor(None, lambda: self._embed([text])[0])
             self._local_cache.set(key, vec)
             return vec
-        return (await self._call_api_async([text]))[0]
+        return await loop.run_in_executor(None, lambda: self._embed([text])[0])
 
     async def embed_documents_async(self, texts: List[str]) -> List[List[float]]:
-        """Embed a list of documents (async). No cache."""
-        return await self._call_api_async(texts)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self._embed(texts))
 
     def cache_stats(self) -> dict:
-        """Return basic cache stats (for debugging/telemetry)."""
         return {
             "size": len(self._local_cache),
             "capacity": self._local_cache.capacity,
         }
 
 
-# Singleton-friendly factory
-def get_embeddings() -> OpenRouterEmbeddings:
-    """Returns an OpenRouterEmbeddings instance."""
-    return OpenRouterEmbeddings()
+def get_embeddings() -> LocalEmbeddings:
+    return LocalEmbeddings()

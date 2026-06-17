@@ -31,8 +31,7 @@ logger = logging.getLogger("repohawk.embedder")
 MAX_CHUNKS = 500
 # Batch size for embedding API calls (avoids per-request token limits)
 EMBED_BATCH_SIZE = 50
-# Embedding dimension (nvidia/llama-nemotron-embed-vl-1b-v2:free)
-EMBED_DIM = 2048
+from app.core.embeddings import EMBED_DIM
 
 
 def embedder_node(state: Dict[str, Any]) -> Dict[str, Any]:
