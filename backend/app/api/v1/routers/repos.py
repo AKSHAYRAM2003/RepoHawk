@@ -232,6 +232,13 @@ async def delete_repository(repo_id: uuid.UUID, db: AsyncSession = Depends(get_d
     # 2. Cancel running task if any
     task_manager.cancel_task(str(repo_id))
 
+    # Clean up cloned files on disk
+    try:
+        from app.agents.nodes.git_cloner import cleanup_clone
+        cleanup_clone(str(repo_id))
+    except Exception as e:
+        print(f"Error cleaning up disk files: {e}")
+
     # 3. Import related models and delete them
     from sqlalchemy import delete
     from app.models.chat import ChatSession, ChatMessage
