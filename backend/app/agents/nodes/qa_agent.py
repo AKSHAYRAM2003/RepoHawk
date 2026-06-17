@@ -374,23 +374,25 @@ def qa_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         llm = get_chat_llm()
         try:
             structured_llm = llm.with_structured_output(QAResponse)
-            response: QAResponse = structured_llm.invoke(messages)
-            answer_text = response.answer or ""
-            raw_highlight = (response.highlight_node_id or "").strip()
-            code_ref = response.code_ref if isinstance(response.code_ref, dict) else None
-        except Exception as struct_err:
-            # Fall back to plain invoke + JsonOutputParser
-            logger.warning(f"QA Agent: with_structured_output failed ({struct_err}), using plain invoke")
-            from langchain_core.output_parsers import JsonOutputParser
-            from app.core.llm import _invoke_with_retry
-            raw = _invoke_with_retry(llm, messages)
-            content = raw.get("answer") if isinstance(raw, dict) else getattr(raw, "content", "")
-            if isinstance(content, dict):
-                answer_text = content.get("answer", "") or ""
-                raw_highlight = (content.get("highlight_node_id") or "").strip()
-                code_ref = content.get("code_ref") if isinstance(content.get("code_ref"), dict) else None
+            response = structured_llm.invoke(messages)
+            if isinstance(response, dict):
+                answer_text = response.get("answer") or ""
+                raw_highlight = (response.get("highlight_node_id") or "").strip()
+                code_ref = response.get("code_ref") if isinstance(response.get("code_ref"), dict) else None
             else:
-                answer_text = content or ""
+                answer_text = getattr(response, "answer", "") or ""
+                raw_highlight = (getattr(response, "highlight_node_id", "") or "").strip()
+                code_ref = getattr(response, "code_ref", None)
+        except Exception as struct_err:
+            logger.warning(f"QA Agent: with_structured_output failed ({struct_err}), using plain invoke fallback")
+            try:
+                raw_response = invoke_with_fallback(llm, messages)
+                answer_text = (getattr(raw_response, "content", "") or "").strip()
+                raw_highlight = ""
+                code_ref = None
+            except Exception as fallback_err:
+                logger.error(f"QA Agent: Plain fallback invoke failed: {fallback_err}")
+                answer_text = ""
                 raw_highlight = ""
                 code_ref = None
 
