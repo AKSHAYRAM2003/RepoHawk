@@ -15,7 +15,14 @@ import {
   ChevronRight,
   ChevronDown,
   Plus,
+  User,
+  LogOut,
+  Sun,
+  Moon,
+  Monitor,
+  Palette
 } from "lucide-react";
+import { useTheme } from "@/components/ThemeProvider";
 
 
 interface RepoSidebarProps {
@@ -47,6 +54,9 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMyReposOpen, setIsMyReposOpen] = useState(true);
   const [activeRepoId, setActiveRepoId] = useState<string | undefined>(repoId);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const { resolvedTheme, theme, setTheme } = useTheme();
 
   // Sync or retrieve last active repository ID from local storage
   useEffect(() => {
@@ -82,10 +92,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         { name: "Dependencies", href: activeRepoId ? `/repo/${activeRepoId}/dependencies` : undefined, icon: PackageCheck },
         { name: "Pipeline Logs", href: activeRepoId ? `/repo/${activeRepoId}/logs` : undefined, icon: TerminalSquare }
       ]
-    },
-    { section: "Utilities", items: [
-      { name: "Settings", href: `/settings`, icon: Settings }
-    ]}
+    }
   ];
 
   return (
@@ -99,7 +106,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
       >
         {!isCollapsed && (
           <div className="flex items-center gap-1 text-on-surface">
-            <div className="h-9 w-auto text-primary">
+            <div className="h-8 w-auto text-primary">
               <svg
                 width="34"
                 height="36"
@@ -124,7 +131,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                 </g>
               </svg>
             </div>
-            <h2 className="text-on-surface text-3xl font-headline font-extrabold leading-tight tracking-[-0.02em]">
+            <h2 className="text-on-surface text-2xl font-headline font-extrabold leading-tight tracking-[-0.02em]">
               RepoHawk
             </h2>
           </div>
@@ -266,6 +273,187 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
           ))}
         </nav>
       </div>
+
+      {/* User Profile Footer */}
+      <div className="relative border-t border-outline-variant p-3 shrink-0">
+        <button
+          onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+          className={`flex items-center w-full ${isCollapsed ? "justify-center" : "justify-between"} p-2 rounded-xl hover-surface transition-colors`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm shrink-0">
+              U
+            </div>
+            {!isCollapsed && (
+              <div className="flex flex-col items-start min-w-0">
+                <span className="text-sm font-semibold text-on-surface truncate">User Name</span>
+                <span className="text-[11px] text-on-surface-variant truncate">user@example.com</span>
+              </div>
+            )}
+          </div>
+          {!isCollapsed && <ChevronDown size={16} className="text-on-surface-variant flex-shrink-0" />}
+        </button>
+
+        {/* Profile Popover */}
+        {isProfileMenuOpen && (
+          <>
+            <div 
+              className="fixed inset-0 z-40" 
+              onClick={() => setIsProfileMenuOpen(false)} 
+            />
+            <div 
+              className="absolute bottom-full left-3 mb-2 w-56 rounded-xl border border-outline-variant bg-surface-container-high shadow-lg z-50 overflow-hidden"
+            >
+              <div className="p-3 border-b border-outline-variant">
+                <p className="text-sm font-semibold text-on-surface">User Name</p>
+                <p className="text-xs text-on-surface-variant">user@example.com</p>
+              </div>
+              <div className="p-1">
+                <button 
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-on-surface hover-surface rounded-lg transition-colors"
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    // Navigate to profile or show profile
+                  }}
+                >
+                  <User size={16} className="text-on-surface-variant" />
+                  Profile
+                </button>
+                <button 
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-on-surface hover-surface rounded-lg transition-colors"
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    setIsSettingsModalOpen(true);
+                  }}
+                >
+                  <Settings size={16} className="text-on-surface-variant" />
+                  Settings
+                </button>
+              </div>
+              <div className="p-1 border-t border-outline-variant">
+                <button 
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[rgb(244,63,94)] hover:bg-[rgba(244,63,94,0.1)] rounded-lg transition-colors"
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    // Logout action
+                  }}
+                >
+                  <LogOut size={16} />
+                  Log out
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Settings Modal */}
+      {isSettingsModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setIsSettingsModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl bg-surface-container border border-outline-variant rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant">
+              <h2 className="text-xl font-bold text-on-surface">Settings</h2>
+              <button 
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="p-2 text-on-surface-variant hover-surface rounded-lg transition-colors leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-8 flex-1">
+              <section className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-xl flex items-center justify-center"
+                    style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", color: "var(--primary)" }}
+                  >
+                    <Palette size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-on-surface">Appearance</h3>
+                    <p className="text-xs text-on-surface-variant">Choose your preferred color theme</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { value: "light", label: "Light", icon: Sun, desc: "Clean bright interface" },
+                    { value: "dark", label: "Dark", icon: Moon, desc: "Easy on the eyes" },
+                    { value: "system", label: "System", icon: Monitor, desc: "Follows your OS setting" },
+                  ].map(({ value, label, icon: Icon, desc }) => {
+                    const isActive = theme === value;
+                    return (
+                      <button
+                        key={value}
+                        onClick={() => setTheme(value as "light" | "dark" | "system")}
+                        className="relative flex flex-col items-start gap-3 p-4 rounded-2xl border text-left transition-all hover:-translate-y-0.5"
+                        style={{
+                          borderColor: isActive
+                            ? "var(--primary)"
+                            : "var(--outline-variant)",
+                          background: isActive
+                            ? "color-mix(in srgb, var(--primary) 6%, var(--surface-container-low))"
+                            : "var(--surface-container-low)",
+                          boxShadow: isActive
+                            ? "0 0 0 1px var(--primary)"
+                            : "none",
+                        }}
+                      >
+                        {isActive && (
+                          <div
+                            className="absolute top-3 right-3 w-2 h-2 rounded-full"
+                            style={{ background: "var(--primary)" }}
+                          />
+                        )}
+                        <div
+                          className="w-9 h-9 rounded-xl flex items-center justify-center"
+                          style={{
+                            background: isActive
+                              ? "color-mix(in srgb, var(--primary) 15%, transparent)"
+                              : "color-mix(in srgb, var(--on-surface) 6%, transparent)",
+                            color: isActive ? "var(--primary)" : "var(--on-surface-variant)",
+                          }}
+                        >
+                          <Icon size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-on-surface">{label}</p>
+                          <p className="text-xs text-on-surface-variant mt-0.5">{desc}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Live preview strip */}
+                <div
+                  className="flex items-center gap-3 mt-2 p-3 rounded-xl border border-outline-variant"
+                  style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}
+                >
+                  <div
+                    className="w-6 h-6 rounded-lg flex items-center justify-center"
+                    style={{ background: "color-mix(in srgb, var(--primary) 15%, transparent)", color: "var(--primary)" }}
+                  >
+                    {resolvedTheme === "dark" ? <Moon size={13} /> : <Sun size={13} />}
+                  </div>
+                  <p className="text-xs text-on-surface-variant">
+                    Currently using <span className="font-semibold text-on-surface">{resolvedTheme}</span> mode
+                    {theme === "system" && " (system preference)"}
+                  </p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
 
     </aside>
   );
