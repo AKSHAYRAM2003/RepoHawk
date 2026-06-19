@@ -16,8 +16,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Send, Bot, FileCode, Zap, AlertCircle, Square,
-  ChevronRight, Copy, Check, RefreshCw, Sparkles, ChevronDown, ChevronUp
+  ArrowUp, Bot, FileCode, Zap, AlertCircle, Square,
+  ChevronRight, Copy, Check, RefreshCw, ChevronDown, ChevronUp
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -506,23 +506,7 @@ function MessageBubble({
         </div>
       )}
 
-      {/* Source file pills */}
-      {!message.isStreaming &&
-        message.sourceFiles &&
-        message.sourceFiles.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 5,
-              paddingLeft: 2,
-            }}
-          >
-            {message.sourceFiles.slice(0, 6).map((f) => (
-              <SourcePill key={f} file={f} onClick={() => onHighlightFile(f)} />
-            ))}
-          </div>
-        )}
+      {/* Source file pills — intentionally hidden per UX decision */}
     </div>
   );
 }
@@ -538,6 +522,8 @@ export default function QAChatPanel({
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [repoName, setRepoName] = useState<string | null>(null);
+  const [repoOwner, setRepoOwner] = useState<string | null>(null);
   // Session ID is now server-issued. We start with the localStorage value
   // (if any) and replace it on the first SSE `session` event.
   const [sessionId, setSessionId] = useState<string | null>(() => {
@@ -554,6 +540,21 @@ export default function QAChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasMessages = messages.length > 0;
+
+  // Fetch repo metadata for the context chip above the input
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/repos/${repoId}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!cancelled && data) {
+          setRepoName(data.name || null);
+          setRepoOwner(data.owner || null);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [repoId]);
 
   // Persist the session_id to localStorage whenever it changes
   useEffect(() => {
@@ -803,7 +804,9 @@ export default function QAChatPanel({
                     isStreaming: false,
                     isStopped: true,
                     content:
-                      m.content + (m.content ? "\n\n_[stopped]_" : "_[stopped]_"),
+                      m.content + (m.content
+                        ? "\n\n---\n*⬜ Generation stopped — the response above may be incomplete. Ask again to continue.*"
+                        : "*⬜ Generation was stopped before any content arrived. Please try your question again.*"),
                   }
                 : m
             )
@@ -904,7 +907,7 @@ export default function QAChatPanel({
               overflowY: "auto",
             }}
           >
-            {/* Avatar */}
+            {/* Logo avatar — RepoHawk house icon */}
             <div
               style={{
                 width: 52,
@@ -918,7 +921,19 @@ export default function QAChatPanel({
                 boxShadow: "0 0 28px color-mix(in srgb, var(--primary) 20%, transparent)",
               }}
             >
-              <Sparkles size={22} style={{ color: "var(--primary)" }} />
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--primary)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
             </div>
 
             <div style={{ textAlign: "center", maxWidth: 230 }}>
@@ -1034,13 +1049,70 @@ export default function QAChatPanel({
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: 6,
+              gap: 0,
               background: "var(--surface-container-highest)",
               border: "1px solid var(--outline-variant)",
               borderRadius: 12,
-              padding: "9px 11px 7px",
+              overflow: "hidden",
             }}
           >
+            {/* Repo context chip — shows which repo is indexed */}
+            {(repoName || repoOwner) && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 11px 6px",
+                  borderBottom: "1px solid var(--outline-variant)",
+                  background: "color-mix(in srgb, var(--on-surface) 3%, transparent)",
+                }}
+              >
+                {/* GitHub logo */}
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="var(--on-surface-variant)"
+                  style={{ flexShrink: 0 }}
+                >
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                </svg>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--on-surface-variant)",
+                    letterSpacing: "0.01em",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: 1,
+                  }}
+                >
+                  {repoOwner && repoName
+                    ? `${repoOwner}/${repoName}`
+                    : repoName || repoOwner || "Repository"}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: "var(--on-surface-variant)",
+                    opacity: 0.5,
+                    flexShrink: 0,
+                    background: "color-mix(in srgb, var(--primary) 12%, transparent)",
+                    color: "var(--primary)",
+                    padding: "1px 6px",
+                    borderRadius: 20,
+                    fontWeight: 700,
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  indexed
+                </span>
+              </div>
+            )}
+            <div style={{ padding: "9px 11px 7px" }}>
             <textarea
               ref={textareaRef}
               value={input}
@@ -1069,6 +1141,7 @@ export default function QAChatPanel({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
+                marginTop: 6,
               }}
             >
               {/* Session hint */}
@@ -1150,9 +1223,10 @@ export default function QAChatPanel({
                     }
                   }}
                 >
-                  <Send size={11} />
+                  <ArrowUp size={12} strokeWidth={2.5} />
                 </button>
               )}
+            </div>
             </div>
           </div>
 

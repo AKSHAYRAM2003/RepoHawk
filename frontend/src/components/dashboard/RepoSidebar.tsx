@@ -15,10 +15,8 @@ import {
   ChevronRight,
   ChevronDown,
   Plus,
-  Sun,
-  Moon,
 } from "lucide-react";
-import { useTheme } from "@/components/ThemeProvider";
+
 
 interface RepoSidebarProps {
   repoId?: string;
@@ -46,7 +44,6 @@ interface MenuGroup {
 
 export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const pathname = usePathname();
-  const { resolvedTheme, setTheme } = useTheme();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMyReposOpen, setIsMyReposOpen] = useState(true);
   const [activeRepoId, setActiveRepoId] = useState<string | undefined>(repoId);
@@ -87,7 +84,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
       ]
     },
     { section: "Utilities", items: [
-      { name: "Settings", href: `/settings`, icon: Settings, external: true }
+      { name: "Settings", href: `/settings`, icon: Settings }
     ]}
   ];
 
@@ -255,20 +252,6 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         </nav>
       </div>
 
-      {/* Bottom: Theme Toggle */}
-      <div className="shrink-0 border-t border-outline-variant p-3">
-        <button
-          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          className={`flex items-center gap-3 w-full rounded-xl py-2 px-3 text-on-surface-variant hover-surface transition-colors text-xs font-semibold`}
-          style={isCollapsed ? { justifyContent: "center", padding: "8px 0" } : {}}
-        >
-          {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-          {!isCollapsed && (
-            <span>{resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-          )}
-        </button>
-      </div>
     </aside>
   );
 }
