@@ -14,8 +14,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Plus
+  Plus,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useTheme } from "@/components/ThemeProvider";
 
 interface RepoSidebarProps {
   repoId?: string;
@@ -43,6 +46,7 @@ interface MenuGroup {
 
 export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const pathname = usePathname();
+  const { resolvedTheme, setTheme } = useTheme();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMyReposOpen, setIsMyReposOpen] = useState(true);
   const [activeRepoId, setActiveRepoId] = useState<string | undefined>(repoId);
@@ -89,41 +93,57 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
 
   return (
     <aside 
-      className={`relative flex flex-col border-r border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-[#0a0a0a] transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-64'}`}
+      className="relative flex flex-col border-r border-outline-variant bg-surface-low transition-all duration-300 ease-in-out"
+      style={{ width: isCollapsed ? 64 : 256 }}
     >
-      {/* Header section */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-800/50">
+      {/* Header */}
+      <div
+        className="h-14 flex items-center justify-between px-4 border-b border-outline-variant shrink-0"
+      >
         {!isCollapsed && (
-          <span className="font-semibold text-slate-800 dark:text-slate-200 tracking-tight text-sm truncate">
-            RepoHawk Workspace
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Logo mark */}
+            <div
+              className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+            </div>
+            <span className="font-bold text-on-surface tracking-tight text-sm truncate">
+              RepoHawk
+            </span>
+          </div>
         )}
         <button 
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className={`p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors ${isCollapsed ? 'mx-auto' : ''}`}
+          className="p-1.5 rounded-lg text-on-surface-variant hover-surface transition-colors"
+          style={{ marginLeft: isCollapsed ? "auto" : undefined, marginRight: isCollapsed ? "auto" : undefined }}
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
       </div>
 
       {/* Nav groups */}
-      <div className="flex-1 overflow-y-auto py-4 scrollbar-hide">
-        <nav className="space-y-6 px-2">
+      <div className="flex-1 overflow-y-auto py-3 scrollbar-hide">
+        <nav className="space-y-5 px-2">
           {menuItems.map((group, gIdx) => (
             <div key={gIdx}>
               {!isCollapsed && (
-                <div className="px-3 mb-2 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500">
+                <div className="px-3 mb-1.5 text-[9px] uppercase font-extrabold tracking-[0.12em] text-on-surface-variant opacity-60">
                   {group.section}
                 </div>
               )}
-              <ul className="space-y-1">
+              <ul className="space-y-0.5">
                 {group.items.map((item, iIdx) => {
                   const Icon = item.icon;
                   const isDisabled = !item.href && !item.action;
 
                   if (item.subItems) {
                     if (isCollapsed) {
-                      // Collapsed view: Render sub-items directly
                       return item.subItems.map((sub, sIdx) => {
                         const isSubActive = pathname === sub.href;
                         const SubIcon = sub.icon;
@@ -132,13 +152,13 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                             <Link href={sub.href}>
                               <div 
                                 title={sub.name}
-                                className={`flex items-center justify-center py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                className={`flex items-center justify-center py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
                                   isSubActive 
-                                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' 
-                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                                    ? "active-primary" 
+                                    : "text-on-surface-variant hover-surface"
                                 }`}
                               >
-                                <SubIcon size={18} className="flex-shrink-0" />
+                                <SubIcon size={17} className="flex-shrink-0" />
                               </div>
                             </Link>
                           </li>
@@ -146,34 +166,33 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                       });
                     }
 
-                    // Expanded view: Accordion dropdown
                     return (
-                      <li key={iIdx} className="space-y-1">
+                      <li key={iIdx} className="space-y-0.5">
                         <button 
                           onClick={() => setIsMyReposOpen(!isMyReposOpen)}
-                          className="w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400"
+                          className="w-full flex items-center px-3 py-2 rounded-xl text-sm font-medium transition-colors hover-surface text-on-surface-variant"
                         >
-                          <Icon size={18} className="flex-shrink-0 text-slate-500" />
+                          <Icon size={17} className="flex-shrink-0" />
                           <span className="ml-3 truncate">{item.name}</span>
-                          <span className="ml-auto">
-                            {isMyReposOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          <span className="ml-auto opacity-60">
+                            {isMyReposOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                           </span>
                         </button>
                         
                         {isMyReposOpen && (
-                          <ul className="pl-4 space-y-1 border-l border-slate-200 dark:border-slate-800/80 ml-5">
+                          <ul className="pl-4 space-y-0.5 border-l ml-5" style={{ borderColor: "var(--outline-variant)" }}>
                             {item.subItems.map((sub, sIdx) => {
                               const isSubActive = pathname === sub.href;
                               const SubIcon = sub.icon;
                               return (
                                 <li key={sIdx}>
                                   <Link href={sub.href}>
-                                    <div className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-205 ${
+                                    <div className={`flex items-center px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
                                       isSubActive 
-                                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' 
-                                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                                        ? "active-primary" 
+                                        : "text-on-surface-variant hover-surface"
                                     }`}>
-                                      <SubIcon size={14} className="flex-shrink-0" />
+                                      <SubIcon size={13} className="flex-shrink-0" />
                                       <span className="ml-2.5 truncate">{sub.name}</span>
                                     </div>
                                   </Link>
@@ -186,41 +205,43 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                     );
                   }
 
-                  // Disabled item logic
                   if (isDisabled) {
                     return (
                       <li key={iIdx}>
                         <div 
                           title="Select a workspace repository to access analysis context."
-                          className={`flex items-center ${isCollapsed ? 'justify-center px-0' : 'px-3'} py-2 rounded-lg text-sm font-medium opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-600`}
+                          className={`flex items-center ${isCollapsed ? "justify-center px-0" : "px-3"} py-2 rounded-xl text-sm font-medium opacity-35 cursor-not-allowed text-on-surface-variant`}
                         >
-                          <Icon size={18} className="flex-shrink-0" />
+                          <Icon size={17} className="flex-shrink-0" />
                           {!isCollapsed && <span className="ml-3 truncate">{item.name}</span>}
                         </div>
                       </li>
                     );
                   }
 
-                  // Normal active items
                   const isActive = !item.external && item.href && pathname === item.href;
                   return (
                     <li key={iIdx}>
                       {item.action ? (
-                        <button className={`w-full flex items-center ${isCollapsed ? 'justify-center px-0' : 'px-3'} py-2 rounded-lg text-sm font-medium transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400`}>
-                          <Icon size={18} className="flex-shrink-0" />
+                        <button className={`w-full flex items-center ${isCollapsed ? "justify-center px-0" : "px-3"} py-2 rounded-xl text-sm font-medium transition-colors hover-surface text-on-surface-variant`}>
+                          <Icon size={17} className="flex-shrink-0" />
                           {!isCollapsed && <span className="ml-3 truncate">{item.name}</span>}
                         </button>
                       ) : (
                         <Link href={item.href || "#"}>
-                          <div className={`flex items-center ${isCollapsed ? 'justify-center px-0' : 'px-3'} py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          <div className={`flex items-center ${isCollapsed ? "justify-center px-0" : "px-3"} py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
                             isActive 
-                              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' 
-                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                              ? "active-primary" 
+                              : "text-on-surface-variant hover-surface"
                           }`}>
-                            <Icon size={18} className="flex-shrink-0" />
-                            {!isCollapsed && <span className="ml-3 truncate">{item.name}</span>}
-                            {isActive && !isCollapsed && (
-                              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                            <Icon size={17} className="flex-shrink-0" />
+                            {!isCollapsed && (
+                              <>
+                                <span className="ml-3 truncate">{item.name}</span>
+                                {isActive && (
+                                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-color" />
+                                )}
+                              </>
                             )}
                           </div>
                         </Link>
@@ -232,6 +253,21 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
             </div>
           ))}
         </nav>
+      </div>
+
+      {/* Bottom: Theme Toggle */}
+      <div className="shrink-0 border-t border-outline-variant p-3">
+        <button
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className={`flex items-center gap-3 w-full rounded-xl py-2 px-3 text-on-surface-variant hover-surface transition-colors text-xs font-semibold`}
+          style={isCollapsed ? { justifyContent: "center", padding: "8px 0" } : {}}
+        >
+          {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          {!isCollapsed && (
+            <span>{resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+          )}
+        </button>
       </div>
     </aside>
   );

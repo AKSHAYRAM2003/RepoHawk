@@ -6,7 +6,7 @@ import QAChatPanel from "./QAChatPanel";
 
 interface PropertiesPanelProps {
   repoId: string;
-  validNodeIds?: string[];        // commit 8 — actual diagram node IDs
+  validNodeIds?: string[];
 }
 
 export default function PropertiesPanel({ repoId, validNodeIds = [] }: PropertiesPanelProps) {
@@ -15,41 +15,46 @@ export default function PropertiesPanel({ repoId, validNodeIds = [] }: Propertie
 
   return (
     <aside
-      className={`relative flex flex-col border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-[#0a0a0a] transition-all duration-300 ease-in-out ${isCollapsed ? "w-12" : "w-80 lg:w-96"}`}
+      className="relative flex flex-col border-l border-outline-variant bg-surface-low transition-all duration-300 ease-in-out"
+      style={{ width: isCollapsed ? 48 : undefined, flex: isCollapsed ? undefined : "0 0 320px" }}
     >
       {/* Collapse toggle */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute -left-3 top-16 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded-full p-1 shadow-sm z-10 transition-colors"
+        className="absolute -left-3.5 top-16 bg-surface-low border border-outline-variant text-on-surface-variant hover:text-on-surface rounded-full p-1 shadow-md z-10 transition-colors"
+        title={isCollapsed ? "Expand panel" : "Collapse panel"}
       >
-        {isCollapsed ? <PanelRightOpen size={14} /> : <PanelRightClose size={14} />}
+        {isCollapsed ? <PanelRightOpen size={13} /> : <PanelRightClose size={13} />}
       </button>
 
       {!isCollapsed ? (
         <>
           {/* Tab header */}
-          <div className="h-14 flex items-center px-2 border-b border-slate-200 dark:border-slate-800/50 flex-shrink-0">
-            <div className="flex bg-slate-200/50 dark:bg-slate-800/40 p-1 rounded-lg w-full">
+          <div className="h-14 flex items-center px-2 border-b border-outline-variant flex-shrink-0">
+            <div
+              className="flex p-1 rounded-xl w-full gap-1"
+              style={{ background: "color-mix(in srgb, var(--on-surface) 6%, transparent)" }}
+            >
               <button
                 onClick={() => setActiveTab("properties")}
-                className={`flex-1 flex items-center justify-center gap-2 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
+                className={`flex-1 flex items-center justify-center gap-2 py-1.5 px-2 text-xs font-semibold rounded-lg transition-all ${
                   activeTab === "properties"
-                    ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    ? "bg-surface text-on-surface shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface"
                 }`}
               >
-                <LayoutTemplate size={14} />
+                <LayoutTemplate size={13} />
                 Properties
               </button>
               <button
                 onClick={() => setActiveTab("qa")}
-                className={`flex-1 flex items-center justify-center gap-2 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
+                className={`flex-1 flex items-center justify-center gap-2 py-1.5 px-2 text-xs font-semibold rounded-lg transition-all ${
                   activeTab === "qa"
-                    ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    ? "bg-surface text-on-surface shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface"
                 }`}
               >
-                <MessageSquare size={14} />
+                <MessageSquare size={13} />
                 QA Agent
               </button>
             </div>
@@ -57,21 +62,24 @@ export default function PropertiesPanel({ repoId, validNodeIds = [] }: Propertie
 
           {/* Panel content */}
           <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-            {/* Properties tab */}
             {activeTab === "properties" && (
-              <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3 opacity-60 p-4">
-                <LayoutTemplate size={32} className="text-slate-400" />
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3 opacity-60 p-6">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                  style={{ background: "color-mix(in srgb, var(--on-surface) 8%, transparent)" }}
+                >
+                  <LayoutTemplate size={22} className="text-on-surface-variant" />
+                </div>
+                <p className="text-sm font-semibold text-on-surface">
                   No node selected
                 </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 px-6">
+                <p className="text-xs text-on-surface-variant px-4 leading-relaxed">
                   Click on a component in the Architecture Canvas to view its
                   source code and properties.
                 </p>
               </div>
             )}
 
-            {/* QA Agent tab — full chat interface */}
             {activeTab === "qa" && (
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <QAChatPanel repoId={repoId} validNodeIds={validNodeIds} />
@@ -80,33 +88,29 @@ export default function PropertiesPanel({ repoId, validNodeIds = [] }: Propertie
           </div>
         </>
       ) : (
-        /* Collapsed icon-only sidebar */
-        <div className="flex-1 flex flex-col items-center py-4 space-y-6">
+        /* Collapsed icon-only view */
+        <div className="flex-1 flex flex-col items-center py-4 space-y-2 pt-16">
           <button
-            onClick={() => {
-              setActiveTab("properties");
-              setIsCollapsed(false);
-            }}
-            className={`p-2 rounded-lg transition-colors ${
+            onClick={() => { setActiveTab("properties"); setIsCollapsed(false); }}
+            className={`p-2.5 rounded-xl transition-colors ${
               activeTab === "properties"
-                ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50"
+                ? "active-primary"
+                : "text-on-surface-variant hover-surface"
             }`}
+            title="Properties"
           >
-            <LayoutTemplate size={20} />
+            <LayoutTemplate size={18} />
           </button>
           <button
-            onClick={() => {
-              setActiveTab("qa");
-              setIsCollapsed(false);
-            }}
-            className={`p-2 rounded-lg transition-colors ${
+            onClick={() => { setActiveTab("qa"); setIsCollapsed(false); }}
+            className={`p-2.5 rounded-xl transition-colors ${
               activeTab === "qa"
-                ? "bg-indigo-500/10 text-indigo-500"
-                : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50"
+                ? "active-primary"
+                : "text-on-surface-variant hover-surface"
             }`}
+            title="QA Agent"
           >
-            <MessageSquare size={20} />
+            <MessageSquare size={18} />
           </button>
         </div>
       )}
