@@ -72,7 +72,7 @@ function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
       style={{
         margin: "8px 0",
         borderRadius: 10,
-        background: "var(--surface-container-highest)",
+        background: "#1e1e1e",
         border: "1px solid var(--outline-variant)",
         overflow: "hidden",
       }}
@@ -84,15 +84,15 @@ function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
           alignItems: "center",
           justifyContent: "space-between",
           padding: "4px 12px",
-          borderBottom: "1px solid var(--outline-variant)",
-          background: "color-mix(in srgb, var(--on-surface) 5%, transparent)",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+          background: "rgba(0, 0, 0, 0.2)",
         }}
       >
         <span
           style={{
             fontSize: 9,
             fontWeight: 700,
-            color: "var(--on-surface-variant)",
+            color: "rgba(255, 255, 255, 0.7)",
             textTransform: "uppercase",
             letterSpacing: "0.1em",
           }}
@@ -110,7 +110,7 @@ function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: "var(--on-surface-variant)",
+                color: "rgba(255, 255, 255, 0.7)",
                 fontSize: 10,
                 fontWeight: 600,
                 transition: "color 0.2s",
@@ -130,7 +130,7 @@ function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
               background: "none",
               border: "none",
               cursor: "pointer",
-              color: copied ? "#10b981" : "var(--on-surface-variant)",
+              color: copied ? "#10b981" : "rgba(255, 255, 255, 0.7)",
               fontSize: 10,
               fontWeight: 600,
               transition: "color 0.2s",
@@ -173,7 +173,7 @@ function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
           style={{ 
             padding: "8px 14px", 
             fontSize: 11, 
-            color: "var(--on-surface-variant)",
+            color: "rgba(255, 255, 255, 0.5)",
             fontStyle: "italic" 
           }}
         >
@@ -1148,7 +1148,7 @@ export default function QAChatPanel({
                     ? `${repoOwner}/${repoName}`
                     : repoName || repoOwner || "Repository"}
                 </span>
-                <span
+                {/* <span
                   style={{
                     fontSize: 9,
                     color: "var(--on-surface-variant)",
@@ -1163,7 +1163,7 @@ export default function QAChatPanel({
                   }}
                 >
                   indexed
-                </span>
+                </span> */}
               </div>
             )}
             <div style={{ padding: "9px 11px 7px" }}>
@@ -1229,11 +1229,11 @@ export default function QAChatPanel({
                   }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(244,63,94,1)";
+                      "rgba(189, 51, 67)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(244,63,94,0.9)";
+                      "rgba(189, 51, 67)";
                   }}
                 >
                   <Square size={10} fill="currentColor" />
@@ -1305,7 +1305,7 @@ export default function QAChatPanel({
               ↵ send · ⇧↵ new line · click pills to highlight canvas
             </p>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {sessionId && messages.length > 0 && (
+              {/* {sessionId && messages.length > 0 && (
                 <button
                   onClick={startNewSession}
                   title="Start a new conversation"
@@ -1331,7 +1331,7 @@ export default function QAChatPanel({
                 >
                   <RefreshCw size={9} /> new
                 </button>
-              )}
+              )} */}
               {sessionId && (
                 <button
                   onClick={() => setMetricsOpen(true)}
