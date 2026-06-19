@@ -20,7 +20,11 @@ import {
   Sun,
   Moon,
   Monitor,
-  Palette
+  Palette,
+  Camera,
+  Settings2,
+  Bell,
+  Shield
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 
@@ -56,6 +60,8 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [activeRepoId, setActiveRepoId] = useState<string | undefined>(repoId);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("appearance");
   const { resolvedTheme, theme, setTheme } = useTheme();
 
   // Sync or retrieve last active repository ID from local storage
@@ -313,7 +319,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                   className="w-full flex items-center gap-3 px-3 py-2 text-sm text-on-surface hover-surface rounded-lg transition-colors"
                   onClick={() => {
                     setIsProfileMenuOpen(false);
-                    // Navigate to profile or show profile
+                    setIsProfileModalOpen(true);
                   }}
                 >
                   <User size={16} className="text-on-surface-variant" />
@@ -369,87 +375,199 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-8 flex-1">
-              <section className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center"
-                    style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", color: "var(--primary)" }}
-                  >
-                    <Palette size={16} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-on-surface">Appearance</h3>
-                    <p className="text-xs text-on-surface-variant">Choose your preferred color theme</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { value: "light", label: "Light", icon: Sun, desc: "Clean bright interface" },
-                    { value: "dark", label: "Dark", icon: Moon, desc: "Easy on the eyes" },
-                    { value: "system", label: "System", icon: Monitor, desc: "Follows your OS setting" },
-                  ].map(({ value, label, icon: Icon, desc }) => {
-                    const isActive = theme === value;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => setTheme(value as "light" | "dark" | "system")}
-                        className="relative flex flex-col items-start gap-3 p-4 rounded-2xl border text-left transition-all hover:-translate-y-0.5"
-                        style={{
-                          borderColor: isActive
-                            ? "var(--primary)"
-                            : "var(--outline-variant)",
-                          background: isActive
-                            ? "color-mix(in srgb, var(--primary) 6%, var(--surface-container-low))"
-                            : "var(--surface-container-low)",
-                          boxShadow: isActive
-                            ? "0 0 0 1px var(--primary)"
-                            : "none",
-                        }}
-                      >
-                        {isActive && (
-                          <div
-                            className="absolute top-3 right-3 w-2 h-2 rounded-full"
-                            style={{ background: "var(--primary)" }}
-                          />
-                        )}
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center"
-                          style={{
-                            background: isActive
-                              ? "color-mix(in srgb, var(--primary) 15%, transparent)"
-                              : "color-mix(in srgb, var(--on-surface) 6%, transparent)",
-                            color: isActive ? "var(--primary)" : "var(--on-surface-variant)",
-                          }}
-                        >
-                          <Icon size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-on-surface">{label}</p>
-                          <p className="text-xs text-on-surface-variant mt-0.5">{desc}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Live preview strip */}
-                <div
-                  className="flex items-center gap-3 mt-2 p-3 rounded-xl border border-outline-variant"
-                  style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}
+            <div className="flex flex-1 overflow-hidden bg-surface-container">
+              {/* Settings Sidebar */}
+              <div className="w-48 sm:w-56 border-r border-outline-variant bg-surface-container-low p-3 space-y-1 overflow-y-auto hidden sm:block">
+                <button
+                  onClick={() => setSettingsTab("general")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                    settingsTab === "general" ? "bg-surface-high text-on-surface font-medium" : "text-on-surface-variant hover:bg-surface-high"
+                  }`}
                 >
-                  <div
-                    className="w-6 h-6 rounded-lg flex items-center justify-center"
-                    style={{ background: "color-mix(in srgb, var(--primary) 15%, transparent)", color: "var(--primary)" }}
-                  >
-                    {resolvedTheme === "dark" ? <Moon size={13} /> : <Sun size={13} />}
+                  <Settings2 size={16} />
+                  General
+                </button>
+                <button
+                  onClick={() => setSettingsTab("appearance")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                    settingsTab === "appearance" ? "bg-surface-high text-on-surface font-medium" : "text-on-surface-variant hover:bg-surface-high"
+                  }`}
+                >
+                  <Palette size={16} />
+                  Appearance
+                </button>
+                <button
+                  onClick={() => setSettingsTab("notifications")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                    settingsTab === "notifications" ? "bg-surface-high text-on-surface font-medium" : "text-on-surface-variant hover:bg-surface-high"
+                  }`}
+                >
+                  <Bell size={16} />
+                  Notifications
+                </button>
+                <button
+                  onClick={() => setSettingsTab("security")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                    settingsTab === "security" ? "bg-surface-high text-on-surface font-medium" : "text-on-surface-variant hover:bg-surface-high"
+                  }`}
+                >
+                  <Shield size={16} />
+                  Security
+                </button>
+              </div>
+
+              {/* Settings Content */}
+              <div className="flex-1 p-6 overflow-y-auto">
+                {settingsTab === "appearance" && (
+                  <section className="space-y-6 max-w-2xl mx-auto">
+                    <div className="flex items-center gap-3 pb-4 border-b border-outline-variant">
+                      <div>
+                        <h3 className="text-lg font-bold text-on-surface">Appearance</h3>
+                        <p className="text-sm text-on-surface-variant">Customize the look and feel of the application.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                      {[
+                        { value: "light", label: "Light", icon: Sun, desc: "Clean bright interface" },
+                        { value: "dark", label: "Dark", icon: Moon, desc: "Easy on the eyes" },
+                        { value: "system", label: "System", icon: Monitor, desc: "Follows your OS setting" },
+                      ].map(({ value, label, icon: Icon, desc }) => {
+                        const isActive = theme === value;
+                        return (
+                          <button
+                            key={value}
+                            onClick={() => setTheme(value as "light" | "dark" | "system")}
+                            className="relative flex flex-col items-start gap-3 p-4 rounded-2xl border text-left transition-all hover:-translate-y-0.5"
+                            style={{
+                              borderColor: isActive
+                                ? "var(--primary)"
+                                : "var(--outline-variant)",
+                              background: isActive
+                                ? "color-mix(in srgb, var(--primary) 6%, var(--surface-container-low))"
+                                : "var(--surface-container-low)",
+                              boxShadow: isActive
+                                ? "0 0 0 1px var(--primary)"
+                                : "none",
+                            }}
+                          >
+                            {isActive && (
+                              <div
+                                className="absolute top-3 right-3 w-2 h-2 rounded-full"
+                                style={{ background: "var(--primary)" }}
+                              />
+                            )}
+                            <div
+                              className="w-9 h-9 rounded-xl flex items-center justify-center"
+                              style={{
+                                background: isActive
+                                  ? "color-mix(in srgb, var(--primary) 15%, transparent)"
+                                  : "color-mix(in srgb, var(--on-surface) 6%, transparent)",
+                                color: isActive ? "var(--primary)" : "var(--on-surface-variant)",
+                              }}
+                            >
+                              <Icon size={18} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-on-surface">{label}</p>
+                              <p className="text-xs text-on-surface-variant mt-0.5">{desc}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {/* Live preview strip */}
+                    <div
+                      className="flex items-center gap-3 mt-4 p-4 rounded-xl border border-outline-variant"
+                      style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: "color-mix(in srgb, var(--primary) 15%, transparent)", color: "var(--primary)" }}
+                      >
+                        {resolvedTheme === "dark" ? <Moon size={16} /> : <Sun size={16} />}
+                      </div>
+                      <div>
+                        <p className="text-sm text-on-surface font-medium">Preview active</p>
+                        <p className="text-xs text-on-surface-variant">
+                          Currently using <span className="font-semibold">{resolvedTheme}</span> mode
+                          {theme === "system" && " (system preference)"}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                )}
+                
+                {settingsTab !== "appearance" && (
+                  <div className="h-full flex flex-col items-center justify-center text-on-surface-variant opacity-60">
+                    <Settings2 size={48} className="mb-4 opacity-50" />
+                    <h3 className="text-lg font-bold text-on-surface mb-2 capitalize">{settingsTab}</h3>
+                    <p className="text-sm">These settings will be available soon.</p>
                   </div>
-                  <p className="text-xs text-on-surface-variant">
-                    Currently using <span className="font-semibold text-on-surface">{resolvedTheme}</span> mode
-                    {theme === "system" && " (system preference)"}
-                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Profile Modal */}
+      {isProfileModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setIsProfileModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-surface-container border border-outline-variant rounded-2xl shadow-2xl overflow-hidden p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold text-on-surface mb-6">Edit profile</h2>
+            
+            <div className="flex justify-center mb-6">
+              <div className="relative">
+                <div className="w-24 h-24 rounded-full bg-[#1db08b] flex items-center justify-center text-white text-4xl font-normal tracking-wide">
+                  AK
                 </div>
-              </section>
+                <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-on-surface hover:bg-surface-highest transition-colors shadow-sm">
+                  <Camera size={14} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Display name</label>
+                <input 
+                  type="text" 
+                  defaultValue="akshayram26" 
+                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors" 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Username</label>
+                <input 
+                  type="text" 
+                  defaultValue="akshayram26" 
+                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors" 
+                />
+              </div>
+            </div>
+
+            <p className="text-xs text-center text-on-surface-variant mt-6 mb-8">Your profile helps people recognize you in group chats.</p>
+
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setIsProfileModalOpen(false)} 
+                className="px-5 py-2.5 rounded-full border border-outline-variant text-on-surface hover:bg-surface-high transition-colors font-medium text-sm"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => setIsProfileModalOpen(false)} 
+                className="px-5 py-2.5 rounded-full bg-on-surface text-surface hover:opacity-90 transition-opacity font-medium text-sm"
+              >
+                Save
+              </button>
             </div>
           </div>
         </div>
