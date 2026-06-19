@@ -17,7 +17,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowUp, Bot, FileCode, Zap, AlertCircle, Square,
-  ChevronRight, Copy, Check, RefreshCw, ChevronDown, ChevronUp
+  ChevronRight, Copy, Check, RefreshCw, ChevronDown, ChevronUp,
+  History, Plus, Trash2, Search
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -537,6 +538,7 @@ export default function QAChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasMessages = messages.length > 0;
@@ -873,6 +875,54 @@ export default function QAChatPanel({
           overflow: "hidden",
         }}
       >
+        {/* ── Top Header ────────────────────────────────────────────── */}
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 12px 0", gap: 12 }}>
+          <button
+            onClick={startNewSession}
+            title="New Chat"
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--on-surface-variant)",
+              transition: "color 0.15s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--primary)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
+            }}
+          >
+            <Plus size={16} />
+          </button>
+          <button
+            onClick={() => setHistoryOpen(true)}
+            title="Chat History"
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--on-surface-variant)",
+              transition: "color 0.15s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--primary)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
+            }}
+          >
+            <History size={16} />
+          </button>
+        </div>
+
         {/* ── Loading history on mount ─────────────────────────── */}
         {isLoadingHistory && !hasMessages && (
           <div
@@ -1317,6 +1367,20 @@ export default function QAChatPanel({
           onClose={() => setMetricsOpen(false)}
         />
       )}
+
+      {/* History modal */}
+      {historyOpen && (
+        <ChatHistoryModal
+          repoId={repoId}
+          repoName={repoName}
+          repoOwner={repoOwner}
+          onClose={() => setHistoryOpen(false)}
+          onSelectSession={(id) => {
+            setSessionId(id);
+            setHistoryOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -1472,6 +1536,225 @@ function MetricsModal({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Chat History Modal ────────────────────────────────────────────────────────
+
+interface ChatSession {
+  id: string;
+  repo_id: string;
+  created_at: string;
+  updated_at: string;
+  title?: string;
+}
+
+function ChatHistoryModal({
+  repoId,
+  repoName,
+  repoOwner,
+  onClose,
+  onSelectSession,
+}: {
+  repoId: string;
+  repoName: string | null;
+  repoOwner: string | null;
+  onClose: () => void;
+  onSelectSession: (sessionId: string) => void;
+}) {
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const fetchSessions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/chat/sessions?repo_id=${encodeURIComponent(repoId)}`);
+      if (r.ok) {
+        const data = await r.json();
+        setSessions(data.sessions || []);
+      }
+    } catch (err) {
+      console.warn("Failed to load sessions:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [repoId]);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const deleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    try {
+      // Assuming a DELETE endpoint exists, if not this will just fail gracefully
+      await fetch(`/api/chat/sessions/${repoId}/${sessionId}`, {
+        method: "DELETE",
+      });
+      fetchSessions();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filteredSessions = sessions.filter((s) => {
+    const q = searchQuery.toLowerCase();
+    const title = s.title || "Untitled Conversation";
+    return title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
+  });
+
+  const timeAgo = (dateStr: string) => {
+    const msPerMinute = 60 * 1000;
+    const msPerHour = msPerMinute * 60;
+    const msPerDay = msPerHour * 24;
+    const msPerMonth = msPerDay * 30;
+
+    const elapsed = Date.now() - new Date(dateStr).getTime();
+
+    if (elapsed < msPerMinute) return Math.round(elapsed / 1000) + " seconds ago";
+    else if (elapsed < msPerHour) return Math.round(elapsed / msPerMinute) + " mins ago";
+    else if (elapsed < msPerDay) return Math.round(elapsed / msPerHour) + " hours ago";
+    else if (elapsed < msPerMonth) return Math.round(elapsed / msPerDay) + " days ago";
+    else return Math.round(elapsed / msPerMonth) + " mos ago";
+  };
+
+  const displayRepo = repoOwner && repoName ? `${repoOwner}/${repoName}` : repoName || "RepoHawk";
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface-container)",
+          border: "1px solid var(--outline-variant)",
+          borderRadius: 16,
+          maxWidth: 700,
+          width: "100%",
+          maxHeight: "85vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* Search Header */}
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--outline-variant)" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              background: "var(--surface-container-highest)",
+              border: "1px solid var(--outline)",
+              borderRadius: 8,
+              padding: "8px 12px",
+              gap: 10,
+            }}
+          >
+            <Search size={18} color="var(--on-surface-variant)" />
+            <input
+              type="text"
+              placeholder="Search all convos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                color: "var(--on-surface)",
+                fontSize: 14,
+                width: "100%",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* List Body */}
+        <div style={{ padding: "16px 20px", overflowY: "auto", flex: 1 }}>
+          <p style={{ fontSize: 12, color: "var(--on-surface-variant)", fontWeight: 600, marginBottom: 12 }}>
+            Recent
+          </p>
+          
+          {loading ? (
+             <p style={{ color: "var(--on-surface-variant)", fontSize: 13, textAlign: "center", padding: 24 }}>
+               Loading history...
+             </p>
+          ) : filteredSessions.length === 0 ? (
+             <p style={{ color: "var(--on-surface-variant)", fontSize: 13, textAlign: "center", padding: 24 }}>
+               No conversations found.
+             </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {filteredSessions.map((s) => (
+                <div
+                  key={s.id}
+                  onClick={() => onSelectSession(s.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background = "var(--surface-container-highest)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background = "transparent";
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, overflow: "hidden" }}>
+                    <p style={{ margin: 0, fontSize: 14, color: "var(--on-surface)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {s.title || s.id}
+                    </p>
+                    <span style={{ fontSize: 12, color: "var(--on-surface-variant)", whiteSpace: "nowrap" }}>
+                      {displayRepo}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <span style={{ fontSize: 12, color: "var(--on-surface-variant)", whiteSpace: "nowrap" }}>
+                      {timeAgo(s.updated_at || s.created_at)}
+                    </span>
+                    <button
+                      onClick={(e) => deleteSession(e, s.id)}
+                      title="Delete Conversation"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--on-surface-variant)",
+                        padding: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.color = "rgba(244,63,94,1)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
