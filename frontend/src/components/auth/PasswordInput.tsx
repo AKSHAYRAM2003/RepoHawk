@@ -1,0 +1,47 @@
+"use client";
+
+import { useRef, useState } from "react";
+
+interface Props {
+  value: string;
+  onChange: (v: string) => void;
+  label: string;
+  required?: boolean;
+}
+
+export default function PasswordInput({ value, onChange, label, required }: Props) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  const toggle = () => {
+    if (!ref.current) return;
+    const next = ref.current.type === "password";
+    ref.current.type = next ? "text" : "password";
+    setVisible(next);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-semibold text-on-surface-variant">{label}</label>
+      <div className="relative">
+        <input ref={ref} type="password" required={required} value={value} onChange={(e) => onChange(e.target.value)}
+          className="w-full h-12 px-4 pr-12 rounded-xl bg-surface-container-highest border border-outline-variant text-on-surface placeholder-on-surface-variant/60 outline-none focus:border-primary transition-colors text-sm" />
+        <button type="button" onClick={toggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors p-1">
+          {visible ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
