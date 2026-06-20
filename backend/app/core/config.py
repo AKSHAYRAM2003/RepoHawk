@@ -16,11 +16,18 @@ class Settings(BaseSettings):
     MODEL_CRITIQUE: str = "openai/gpt-oss-120b:free"
     MODEL_EMBED: str = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
     MODEL_FALLBACK: str = "meta-llama/llama-3.2-3b-instruct:free"
-    MODEL_REWRITE: str = "meta-llama/llama-3.2-3b-instruct:free"   # cheap fast model for query rewriting
+    MODEL_REWRITE: str = "meta-llama/llama-3.2-3b-instruct:free"
     
     # Chroma
     CHROMA_HOST: str = "localhost"
     CHROMA_PORT: int = 8000
+    
+    # Auth
+    JWT_SECRET_KEY: str = "change-me"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    RESEND_API_KEY: str = ""
+    FRONTEND_URL: str = "http://localhost:3000"
     
     class Config:
         env_file = ".env"
