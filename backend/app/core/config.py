@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     RESEND_API_KEY: str = ""
+    RESEND_WELCOME_TEMPLATE_ID: str = ""
+    RESEND_PASSWORD_RESET_TEMPLATE_ID: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
     
     class Config:

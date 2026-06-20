@@ -23,7 +23,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -162,6 +162,7 @@ function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
             background: "transparent",
             fontSize: 11,
             fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            color: "#e2e8f0",
           }}
         >
           {code}
