@@ -2,32 +2,21 @@ import { NextResponse } from 'next/server';
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8003/api/v1";
 
-export async function POST(req: Request) {
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
   const cookie = req.headers.get("cookie") || "";
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(`${FASTAPI_URL}/chat/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    console.error("Proxy: failed to reach FastAPI", err);
-    return NextResponse.json({ error: "Chat service unreachable" }, { status: 502 });
-  }
+  const upstream = await fetch(`${FASTAPI_URL}/repos/${id}/stream`, {
+    headers: { Cookie: cookie },
+  });
 
   if (!upstream.ok || !upstream.body) {
     const text = await upstream.text().catch(() => "");
     return NextResponse.json(
-      { error: `Chat service error: ${upstream.status} ${text}` },
+      { error: `Stream error: ${upstream.status} ${text}` },
       { status: upstream.status }
     );
   }
@@ -45,7 +34,7 @@ export async function POST(req: Request) {
         }
         controller.close();
       } catch (err) {
-        console.error("Proxy: stream error", err);
+        console.error("Stream proxy error:", err);
         controller.error(err);
       } finally {
         try { reader.releaseLock(); } catch {}

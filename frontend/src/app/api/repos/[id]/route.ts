@@ -8,9 +8,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const cookie = req.headers.get("cookie") || "";
     const response = await fetch(`${FASTAPI_URL}/repos/${id}`, {
       method: "GET",
       cache: "no-store",
+      headers: { Cookie: cookie },
     });
 
     if (!response.ok) {
@@ -31,8 +33,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const cookie = req.headers.get("cookie") || "";
     const response = await fetch(`${FASTAPI_URL}/repos/${id}`, {
       method: "DELETE",
+      headers: { Cookie: cookie },
     });
 
     if (!response.ok) {

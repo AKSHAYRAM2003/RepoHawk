@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8003/api/v1";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const cookie = req.headers.get("cookie") || "";
     const response = await fetch(`${FASTAPI_URL}/repos`, {
       method: "GET",
       cache: "no-store",
+      headers: { Cookie: cookie },
     });
 
     if (!response.ok) {
@@ -23,12 +25,12 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const cookie = req.headers.get("cookie") || "";
     const body = await req.json();
     
-    // Server-to-Server communication (hides API details from frontend)
     const response = await fetch(`${FASTAPI_URL}/repos/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Cookie: cookie },
       body: JSON.stringify(body),
     });
 

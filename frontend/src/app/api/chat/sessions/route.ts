@@ -2,10 +2,6 @@ import { NextResponse } from 'next/server';
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8003/api/v1";
 
-/**
- * GET /api/chat/sessions?repo_id=...
- * List all chat sessions for a repo.
- */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const repoId = url.searchParams.get("repo_id");
@@ -13,9 +9,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Missing repo_id" }, { status: 400 });
   }
   try {
+    const cookie = req.headers.get("cookie") || "";
     const r = await fetch(`${FASTAPI_URL}/chat/sessions/${repoId}`, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Cookie: cookie },
     });
     const data = await r.json();
     return NextResponse.json(data, { status: r.status });

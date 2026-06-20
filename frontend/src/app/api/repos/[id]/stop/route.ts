@@ -8,8 +8,10 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const cookie = req.headers.get("cookie") || "";
     const response = await fetch(`${FASTAPI_URL}/repos/${id}/stop`, {
       method: "POST",
+      headers: { Cookie: cookie },
     });
 
     if (!response.ok) {
