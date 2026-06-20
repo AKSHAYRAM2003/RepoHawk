@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 interface Props {
   value: string;
@@ -10,21 +10,17 @@ interface Props {
 }
 
 export default function PasswordInput({ value, onChange, label, required }: Props) {
-  const ref = useRef<HTMLInputElement>(null);
   const [visible, setVisible] = useState(false);
 
   const toggle = () => {
-    if (!ref.current) return;
-    const next = ref.current.type === "password";
-    ref.current.type = next ? "text" : "password";
-    setVisible(next);
+    setVisible(!visible);
   };
 
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-semibold text-on-surface-variant">{label}</label>
       <div className="relative">
-        <input ref={ref} type="password" required={required} value={value} onChange={(e) => onChange(e.target.value)}
+        <input type={visible ? "text" : "password"} required={required} value={value} onChange={(e) => onChange(e.target.value)}
           className="w-full h-12 px-4 pr-12 rounded-xl bg-surface-container-highest border border-outline-variant text-on-surface placeholder-on-surface-variant/60 outline-none focus:border-primary transition-colors text-sm" />
         <button type="button" onClick={toggle}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors p-1">
