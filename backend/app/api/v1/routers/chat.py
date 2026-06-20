@@ -6,11 +6,14 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List, Dict
 from app.core.database import get_db
+from app.core.dependencies import get_current_user
+from app.models.user import User
 from app.agents.graph import qa_graph
 from app.agents.nodes.qa_agent import astream_qa_answer
 from app.services import chat_service
 from app.services.rate_limit import chat_limiter
 from app.models.qa_metrics import QAQuery
+from app.models.chat import ChatSession
 from sse_starlette.sse import EventSourceResponse
 import uuid
 
@@ -41,7 +44,6 @@ class ChatStreamRequest(BaseModel):
 
 
 def _history_to_messages(history: Optional[List[Dict]]):
-    """Convert {role, content} dicts to LangChain messages."""
     from langchain_core.messages import HumanMessage, AIMessage
     if not history:
         return []
@@ -58,10 +60,12 @@ def _history_to_messages(history: Optional[List[Dict]]):
     return out
 
 
-# ── Non-streaming endpoint (kept for backwards compat) ────────────────────────
 @router.post("/", response_model=ChatResponse)
-async def chat_with_codebase(payload: ChatMessageRequest, db: AsyncSession = Depends(get_db)):
-    """Non-streaming chat endpoint (legacy)."""
+async def chat_with_codebase(
+    payload: ChatMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     initial_state = {
         "question": payload.query,
         "repo_id": payload.repo_id,
@@ -69,13 +73,10 @@ async def chat_with_codebase(payload: ChatMessageRequest, db: AsyncSession = Dep
         "chat_history": [],
         "valid_node_ids": [],
     }
-
     try:
         final_state = qa_graph.invoke(initial_state)
-
         if "error" in final_state and final_state["error"]:
             raise HTTPException(status_code=500, detail=final_state["error"])
-
         return ChatResponse(
             answer=final_state.get("answer", "I couldn't find an answer."),
             session_id=initial_state["session_id"],
@@ -89,24 +90,13 @@ async def chat_with_codebase(payload: ChatMessageRequest, db: AsyncSession = Dep
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── Streaming endpoint (commit 2 + 5) ──────────────────────────────────────────
 @router.post("/stream")
 async def chat_stream(
     payload: ChatStreamRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """
-    Streaming chat with persistent history + rate limiting + telemetry.
-    Yields SSE events:
-      { type: "session",  session_id }
-      { type: "token",    delta }
-      { type: "sources",  files, highlight_node_id, code_ref }
-      { type: "metrics",  latency_*, num_chunks_*, ... }   (commit 5)
-      { type: "done" }
-      { type: "error",    message }
-    """
-    # 1. Rate limiting (commit 5)
     client_host = request.client.host if request.client else "unknown"
     rl_key = f"{client_host}:{payload.session_id or 'new'}"
     allowed, retry_after = chat_limiter.check(rl_key)
@@ -117,24 +107,18 @@ async def chat_stream(
             headers={"Retry-After": str(int(retry_after) + 1)},
         )
 
-    # 2. Get or create the session
     session = await chat_service.get_or_create_session(
-        db, payload.session_id, payload.repo_id
+        db, payload.session_id, payload.repo_id, current_user.id
     )
     session_id = str(session.id)
 
-    # 3. Persist the user's question immediately
     try:
-        await chat_service.append_message(
-            db, session_id, role="user", content=payload.query
-        )
+        await chat_service.append_message(db, session_id, role="user", content=payload.query)
     except Exception as e:
         logger.warning(f"Failed to persist user message: {e}")
 
-    # 4. Load existing history (now includes the user question we just saved)
     history_messages = await chat_service.load_history_for_context(db, session_id)
 
-    # 5. Run the streaming QA agent
     async def event_generator():
         collected_answer = ""
         collected_highlight = ""
@@ -152,8 +136,6 @@ async def chat_stream(
             ):
                 if await request.is_disconnected():
                     break
-
-                # Capture final fields for persistence
                 if event.get("type") == "sources":
                     collected_highlight = event.get("highlight_node_id", "") or ""
                     collected_code_ref = event.get("code_ref")
@@ -162,22 +144,16 @@ async def chat_stream(
                     metrics_payload = event
                 elif event.get("type") == "token":
                     collected_answer += event.get("delta", "")
-
                 yield {"event": "message", "data": json.dumps(event)}
-
         except Exception as e:
             err = {"type": "error", "message": str(e)}
             yield {"event": "message", "data": json.dumps(err)}
             yield {"event": "message", "data": json.dumps({"type": "done"})}
 
-        # 6. Persist the assistant's full answer
         if collected_answer.strip():
             try:
                 await chat_service.append_message(
-                    db,
-                    session_id,
-                    role="assistant",
-                    content=collected_answer,
+                    db, session_id, role="assistant", content=collected_answer,
                     highlight_node_id=collected_highlight or None,
                     code_ref=collected_code_ref,
                     source_files=collected_source_files,
@@ -185,17 +161,14 @@ async def chat_stream(
             except Exception as e:
                 logger.warning(f"Failed to persist assistant message: {e}")
 
-        # 7. Persist telemetry (commit 5)
         if metrics_payload:
             try:
                 await _persist_metrics(
-                    db,
-                    session_id=session_id,
-                    repo_id=payload.repo_id,
-                    question=payload.query,
-                    metrics=metrics_payload,
+                    db, session_id=session_id, repo_id=payload.repo_id,
+                    question=payload.query, metrics=metrics_payload,
                     answer_length=len(collected_answer),
                     highlight_node_id=collected_highlight or None,
+                    user_id=current_user.id,
                 )
             except Exception as e:
                 logger.warning(f"Failed to persist qa_query metrics: {e}")
@@ -212,29 +185,29 @@ async def _persist_metrics(
     metrics: Dict,
     answer_length: int,
     highlight_node_id: Optional[str],
+    user_id: uuid.UUID,
 ):
-    """Write a single qa_queries row."""
     try:
         sid = uuid.UUID(session_id)
         rid = uuid.UUID(repo_id)
     except (ValueError, TypeError):
         return
-
     row = QAQuery(
         session_id=sid,
         repo_id=rid,
+        user_id=user_id,
         question=question[:500],
         rewritten_question=(metrics.get("rewritten_question") or "")[:500] or None,
         num_chunks_retrieved=int(metrics.get("num_chunks_retrieved") or 0),
         num_chunks_kept=int(metrics.get("num_chunks_kept") or 0),
-        relevance_threshold=0,  # not exposed yet; future
+        relevance_threshold=0,
         answer_length_chars=answer_length,
         highlight_node_id=highlight_node_id,
         highlight_hit=bool(highlight_node_id),
         latency_total_ms=int(metrics.get("latency_total_ms") or 0),
         latency_retrieval_ms=int(metrics.get("latency_retrieval_ms") or 0),
         latency_llm_ms=int(metrics.get("latency_llm_ms") or 0),
-        tokens_in=0,   # would need to parse response.usage_metadata
+        tokens_in=0,
         tokens_out=0,
         error=metrics.get("error"),
     )
@@ -242,29 +215,45 @@ async def _persist_metrics(
     await db.commit()
 
 
-# ── History endpoints (commit 3) ──────────────────────────────────────────────
 @router.get("/sessions/{repo_id}")
-async def list_sessions(repo_id: str, db: AsyncSession = Depends(get_db)):
-    """List all chat sessions for a repo (most recent first)."""
-    sessions = await chat_service.list_sessions_for_repo(db, repo_id)
+async def list_sessions(
+    repo_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sessions = await chat_service.list_sessions_for_repo(db, repo_id, current_user.id)
     return {"sessions": sessions}
 
 
 @router.get("/sessions/{repo_id}/{session_id}/messages")
 async def get_session_messages(
-    repo_id: str, session_id: str, db: AsyncSession = Depends(get_db)
+    repo_id: str,
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Get all messages for a session."""
+    from sqlalchemy import select
+    try:
+        sid = uuid.UUID(session_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+    stmt = select(ChatSession).where(
+        ChatSession.id == sid,
+        ChatSession.user_id == current_user.id,
+    )
+    res = await db.execute(stmt)
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Session not found")
     messages = await chat_service.load_history(db, session_id)
     return {"session_id": session_id, "repo_id": repo_id, "messages": messages}
 
 
-# ── Metrics endpoints (commit 5) ──────────────────────────────────────────────
 @router.get("/metrics/{session_id}")
 async def get_session_metrics(
-    session_id: str, db: AsyncSession = Depends(get_db)
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Get telemetry for all queries in a session (most recent first)."""
     from sqlalchemy import select
     try:
         sid = uuid.UUID(session_id)
@@ -272,7 +261,7 @@ async def get_session_metrics(
         return {"metrics": []}
     stmt = (
         select(QAQuery)
-        .where(QAQuery.session_id == sid)
+        .where(QAQuery.session_id == sid, QAQuery.user_id == current_user.id)
         .order_by(QAQuery.created_at.desc())
         .limit(50)
     )

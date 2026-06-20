@@ -91,10 +91,11 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                     await db.commit()
                     return
 
-                # 3. Create Diagram record (defensive: set reactflow_json after creation if needed)
+                # 3. Create Diagram record
                 try:
                     new_diagram = Diagram(
                         repo_id=repo.id,
+                        user_id=repo.user_id,
                         mermaid_syntax=final_state.get("mermaid_syntax", ""),
                         reactflow_json={
                             "nodes": final_state.get("reactflow_nodes", []),
@@ -105,6 +106,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 except TypeError:
                     new_diagram = Diagram(
                         repo_id=repo.id,
+                        user_id=repo.user_id,
                         mermaid_syntax=final_state.get("mermaid_syntax", ""),
                         confidence_level=final_state.get("confidence_level", "low")
                     )

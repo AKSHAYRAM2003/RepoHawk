@@ -1,7 +1,6 @@
 """
 Chat Service
 Encapsulates all DB I/O for chat sessions and messages.
-Used by the chat router to persist history and load existing context.
 """
 import uuid
 import logging
@@ -20,12 +19,8 @@ async def get_or_create_session(
     db: AsyncSession,
     session_id: Optional[str],
     repo_id: str,
+    user_id: uuid.UUID,
 ) -> ChatSession:
-    """
-    Return the existing ChatSession for `session_id`, or create a new one
-    linked to `repo_id`. Validates ownership (the session must belong to the
-    given repo).
-    """
     if session_id:
         try:
             sid = uuid.UUID(session_id)
@@ -36,33 +31,22 @@ async def get_or_create_session(
             res = await db.execute(stmt)
             existing = res.scalar_one_or_none()
             if existing:
-                # Verify ownership
                 if str(existing.repo_id) == str(repo_id):
                     return existing
-                logger.warning(
-                    f"chat_service: session {sid} belongs to a different repo. "
-                    f"Creating a new one."
-                )
+                logger.warning(f"Session {sid} belongs to a different repo. Creating new one.")
 
-    # Create a new session
-    new_session = ChatSession(repo_id=uuid.UUID(repo_id))
+    new_session = ChatSession(repo_id=uuid.UUID(repo_id), user_id=user_id)
     db.add(new_session)
     await db.commit()
     await db.refresh(new_session)
-    logger.info(f"chat_service: created new ChatSession {new_session.id} for repo {repo_id}")
     return new_session
 
 
 async def load_history(db: AsyncSession, session_id: str) -> List[Dict[str, Any]]:
-    """
-    Load all messages for a session, ordered by created_at ASC.
-    Returns a list of {role, content, highlight_node_id, code_ref, source_files}.
-    """
     try:
         sid = uuid.UUID(session_id)
     except (ValueError, TypeError):
         return []
-
     stmt = (
         select(ChatMessage)
         .where(ChatMessage.session_id == sid)
@@ -70,7 +54,6 @@ async def load_history(db: AsyncSession, session_id: str) -> List[Dict[str, Any]
     )
     res = await db.execute(stmt)
     messages = res.scalars().all()
-
     return [
         {
             "role": m.role,
@@ -84,13 +67,7 @@ async def load_history(db: AsyncSession, session_id: str) -> List[Dict[str, Any]
     ]
 
 
-async def load_history_for_context(
-    db: AsyncSession, session_id: str
-) -> List[Any]:
-    """
-    Load history and convert to LangChain messages (HumanMessage / AIMessage).
-    Used by the QA agent to get prior turns for the LLM.
-    """
+async def load_history_for_context(db: AsyncSession, session_id: str) -> List[Any]:
     rows = await load_history(db, session_id)
     from langchain_core.messages import HumanMessage, AIMessage
     out = []
@@ -114,9 +91,6 @@ async def append_message(
     code_ref: Optional[Dict[str, Any]] = None,
     source_files: Optional[List[str]] = None,
 ) -> ChatMessage:
-    """
-    Append a single message (user or assistant) to the session.
-    """
     sid = uuid.UUID(session_id)
     msg = ChatMessage(
         session_id=sid,
@@ -133,19 +107,15 @@ async def append_message(
 
 
 async def list_sessions_for_repo(
-    db: AsyncSession, repo_id: str
+    db: AsyncSession, repo_id: str, user_id: uuid.UUID
 ) -> List[Dict[str, Any]]:
-    """
-    List all chat sessions for a repo (most recent first).
-    """
     try:
         rid = uuid.UUID(repo_id)
     except (ValueError, TypeError):
         return []
-
     stmt = (
         select(ChatSession)
-        .where(ChatSession.repo_id == rid)
+        .where(ChatSession.repo_id == rid, ChatSession.user_id == user_id)
         .order_by(ChatSession.created_at.desc())
     )
     res = await db.execute(stmt)

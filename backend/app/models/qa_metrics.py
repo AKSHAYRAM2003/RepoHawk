@@ -13,8 +13,9 @@ class QAQuery(Base):
     __tablename__ = "qa_queries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id"), nullable=False)
-    repo_id = Column(UUID(as_uuid=True), ForeignKey("repos.id"), nullable=False)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    repo_id = Column(UUID(as_uuid=True), ForeignKey("repos.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Question
     question = Column(String, nullable=False)
