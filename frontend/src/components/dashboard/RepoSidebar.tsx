@@ -27,6 +27,7 @@ import {
   Shield
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
+import { useAuth } from "@/contexts/AuthContext";
 
 
 interface RepoSidebarProps {
@@ -63,6 +64,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
   const { resolvedTheme, theme, setTheme } = useTheme();
+  const { user, logout } = useAuth();
 
   // Sync or retrieve last active repository ID from local storage
   useEffect(() => {
@@ -287,13 +289,13 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
           className={`flex items-center w-full ${isCollapsed ? "justify-center" : "justify-between"} p-2 rounded-xl hover-surface transition-colors`}
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm shrink-0">
-              U
+            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#4a50c5] to-[#00b08a] flex items-center justify-center text-on-primary font-bold text-sm shrink-0">
+              {(user?.name || user?.email || "U")[0].toUpperCase()}
             </div>
             {!isCollapsed && (
               <div className="flex flex-col items-start min-w-0">
-                <span className="text-sm font-semibold text-on-surface truncate">User Name</span>
-                <span className="text-[11px] text-on-surface-variant truncate">user@example.com</span>
+                <span className="text-sm font-semibold text-on-surface truncate">{user?.name || user?.email || "User"}</span>
+                <span className="text-[11px] text-on-surface-variant truncate">{user?.email || ""}</span>
               </div>
             )}
           </div>
@@ -311,8 +313,8 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
               className="absolute bottom-full left-3 mb-2 w-56 rounded-xl border border-outline-variant bg-surface-container-high shadow-lg z-50 overflow-hidden"
             >
               <div className="p-3 border-b border-outline-variant">
-                <p className="text-sm font-semibold text-on-surface">User Name</p>
-                <p className="text-xs text-on-surface-variant">user@example.com</p>
+                <p className="text-sm font-semibold text-on-surface">{user?.name || user?.email || "User"}</p>
+                <p className="text-xs text-on-surface-variant">{user?.email || ""}</p>
               </div>
               <div className="p-1">
                 <button 
@@ -337,13 +339,13 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                 </button>
               </div>
               <div className="p-1 border-t border-outline-variant">
-                <button 
-                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[rgb(244,63,94)] hover:bg-[rgba(244,63,94,0.1)] rounded-lg transition-colors"
-                  onClick={() => {
-                    setIsProfileMenuOpen(false);
-                    // Logout action
-                  }}
-                >
+                  <button 
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[rgb(244,63,94)] hover:bg-[rgba(244,63,94,0.1)] rounded-lg transition-colors"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      logout();
+                    }}
+                  >
                   <LogOut size={16} />
                   Log out
                 </button>

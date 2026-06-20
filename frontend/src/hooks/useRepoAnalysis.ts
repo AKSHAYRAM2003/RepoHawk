@@ -15,8 +15,6 @@ export interface Repo {
   created_at: string;
 }
 
-const FASTAPI_BASE_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8003/api/v1";
-
 export function useRepoAnalysis(repoId: string) {
   const [repo, setRepo] = useState<Repo | null>(null);
   const [status, setStatus] = useState<Repo["analysis_status"] | "loading">("loading");
@@ -75,7 +73,7 @@ export function useRepoAnalysis(repoId: string) {
         eventSourceRef.current.close();
       }
 
-      const streamUrl = `${FASTAPI_BASE_URL}/repos/${repoId}/stream`;
+      const streamUrl = `/api/repos/${repoId}/stream`;
       console.log(`Connecting to SSE stream: ${streamUrl}`);
       
       const es = new EventSource(streamUrl);
