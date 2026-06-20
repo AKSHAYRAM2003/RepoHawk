@@ -141,7 +141,6 @@ async def send_password_reset_email(email: str, reset_url: str) -> bool:
             email,
             "Reset your RepoHawk password",
             template=template_payload,
-            unique_subject=True,
         )
 
     body = f"""\
@@ -175,7 +174,6 @@ async def send_password_reset_email(email: str, reset_url: str) -> bool:
         email,
         "Reset your RepoHawk password",
         _email_wrapper(body, logo_url=logo_url),
-        unique_subject=True,
     )
 
 
@@ -200,7 +198,6 @@ async def send_welcome_email(email: str, name: str) -> bool:
             email,
             "Welcome to RepoHawk 🚀",
             template=template_payload,
-            unique_subject=True,
         )
 
     body = f"""\
@@ -239,5 +236,4 @@ async def send_welcome_email(email: str, name: str) -> bool:
         email,
         "Welcome to RepoHawk 🚀",
         _email_wrapper(body, logo_url=logo_url, hero_image_url=hero_url),
-        unique_subject=True,
     )
