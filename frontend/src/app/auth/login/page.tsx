@@ -26,10 +26,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="w-full max-w-sm mx-auto space-y-8">
+    <div className="w-full p-8 md:p-10 rounded-3xl border border-outline-variant/15 bg-surface-container-high/60 dark:bg-surface-container-high/40 backdrop-blur-2xl shadow-xl space-y-8 relative overflow-hidden transition-all duration-300">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-extrabold text-on-surface tracking-tight">Welcome back</h1>
-        <p className="text-on-surface-variant text-sm">Sign in to your RepoHawk account</p>
+        <p className="text-on-surface-variant text-sm font-medium">Sign in to your RepoHawk account</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
@@ -46,9 +46,11 @@ export default function LoginPage() {
           {loading ? "Signing in..." : "Sign in"}
         </button>
       </form>
-      <div className="text-center text-sm space-y-2">
-        <Link href="/auth/forgot-password" className="text-primary hover:underline font-medium">Forgot password?</Link>
-        <p className="text-on-surface-variant">Don&apos;t have an account? <Link href="/auth/signup" className="text-primary hover:underline font-medium">Sign up</Link></p>
+      <div className="text-center text-sm space-y-3 border-t border-outline-variant/15 pt-4">
+        <div>
+          <Link href="/auth/forgot-password" className="text-primary hover:underline font-semibold">Forgot password?</Link>
+        </div>
+        <p className="text-on-surface-variant">Don&apos;t have an account? <Link href="/auth/signup" className="text-primary hover:underline font-bold">Sign up</Link></p>
       </div>
     </div>
   );
