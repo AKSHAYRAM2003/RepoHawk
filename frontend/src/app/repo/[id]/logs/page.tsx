@@ -180,7 +180,7 @@ export default function LogsPage({ params }: { params: Promise<{ id: string }> }
             transition={{ delay: 0.2 }}
             className="text-slate-500"
           >
-            [System Log Initialized - {new Date(repo?.created_at || Date.now()).toLocaleTimeString()}]
+            [System Log Initialized - {new Date(repo?.created_at || new Date().toISOString()).toLocaleTimeString()}]
           </motion.div>
           <motion.div
             initial={{ opacity: 0 }}

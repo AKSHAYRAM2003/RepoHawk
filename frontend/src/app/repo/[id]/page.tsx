@@ -37,12 +37,12 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
 
   useEffect(() => {
     const idx = steps.findIndex(s => s.id === currentStep);
-    if (idx !== -1) {
+    if (idx !== -1 && idx !== activeStepIndex) {
       setActiveStepIndex(idx);
-    } else if (status === "complete") {
+    } else if (status === "complete" && activeStepIndex !== steps.length) {
       setActiveStepIndex(steps.length);
     }
-  }, [currentStep, status]);
+  }, [currentStep, status, activeStepIndex, steps.length, steps]);
 
   // ── Not Found ────────────────────────────────────────────────────────────────
   if (isNotFound) {

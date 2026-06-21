@@ -461,7 +461,7 @@ function DiagramControls({ containerRef }: { containerRef: React.RefObject<HTMLD
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, background: "rgba(10,11,20,0.92)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: 4, backdropFilter: "blur(12px)", boxShadow: "0 4px 20px rgba(0,0,0,0.5)" }}>
       {controls.map((c, i) => (
-        <button key={i} title={c.title} style={btn} onClick={c.action} onMouseEnter={hE} onMouseLeave={hL}>{c.icon}</button>
+        <button key={i} title={c.title} style={btn} onClick={c.action} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "white"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>{c.icon}</button>
       ))}
     </div>
   );

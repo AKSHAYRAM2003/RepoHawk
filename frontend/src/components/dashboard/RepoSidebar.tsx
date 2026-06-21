@@ -71,15 +71,17 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
     if (typeof window !== "undefined") {
       if (repoId) {
         localStorage.setItem("repohawk_last_active_repo", repoId);
-        setActiveRepoId(repoId);
+        if (activeRepoId !== repoId) {
+          setActiveRepoId(repoId);
+        }
       } else {
         const lastId = localStorage.getItem("repohawk_last_active_repo");
-        if (lastId) {
+        if (lastId && activeRepoId !== lastId) {
           setActiveRepoId(lastId);
         }
       }
     }
-  }, [repoId]);
+  }, [repoId, activeRepoId]);
 
   const menuItems: MenuGroup[] = [
     { section: "Overview", items: [

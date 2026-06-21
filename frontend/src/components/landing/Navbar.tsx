@@ -7,7 +7,7 @@ import { ThemeToggle } from "../ThemeToggle";
 import { Menu, X, LogOut, User, Settings, LayoutDashboard } from "lucide-react";
 
 export default function Navbar() {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, setLoginModalOpen } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -73,9 +73,9 @@ export default function Navbar() {
                 <a className="text-on-surface-variant hover:text-primary transition-colors text-md font-semibold" href="#">Docs</a>
               </div>
               <ThemeToggle />
-              <Link href="/auth/login" className="flex items-center justify-center rounded-xl h-10 px-5 bg-gradient-to-r from-[#4a50c5] to-[#00b08a] text-white text-md font-bold hover:shadow-lg transition-all active:scale-95">
+              <button onClick={() => setLoginModalOpen(true)} className="flex items-center justify-center rounded-xl h-10 px-5 bg-gradient-to-r from-[#4a50c5] to-[#00b08a] text-white text-md font-bold hover:shadow-lg transition-all active:scale-95 cursor-pointer">
                 <span>Sign In</span>
-              </Link>
+              </button>
             </>
           )}
         </div>
@@ -107,7 +107,7 @@ export default function Navbar() {
           {isAuthenticated ? (
             <button onClick={() => { setIsMobileMenuOpen(false); logout(); }} className="flex w-full items-center justify-center rounded-2xl h-14 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-lg font-bold hover:shadow-lg transition-all">Log out</button>
           ) : (
-            <Link href="/auth/login" onClick={() => setIsMobileMenuOpen(false)} className="flex w-full items-center justify-center rounded-2xl h-14 bg-gradient-to-r from-[#4a50c5] to-[#00b08a] text-white text-lg font-bold hover:shadow-lg transition-all shadow-[0_4px_20px_rgba(74,80,197,0.3)]">Sign In To RepoHawk</Link>
+            <button onClick={() => { setIsMobileMenuOpen(false); setLoginModalOpen(true); }} className="flex w-full items-center justify-center rounded-2xl h-14 bg-gradient-to-r from-[#4a50c5] to-[#00b08a] text-white text-lg font-bold hover:shadow-lg transition-all shadow-[0_4px_20px_rgba(74,80,197,0.3)] cursor-pointer">Sign In To RepoHawk</button>
           )}
         </div>
       )}

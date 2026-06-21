@@ -19,6 +19,10 @@ interface AuthContextType {
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string }) => Promise<void>;
+  isLoginModalOpen: boolean;
+  setLoginModalOpen: (open: boolean) => void;
+  isSignupModalOpen: boolean;
+  setSignupModalOpen: (open: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -26,6 +30,8 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoginModalOpen, setLoginModalOpen] = useState(false);
+  const [isSignupModalOpen, setSignupModalOpen] = useState(false);
   const router = useRouter();
 
   const fetchUser = useCallback(async () => {
@@ -66,9 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Registration failed");
-    setUser(data.user);
-    router.push("/dashboard");
-  }, [router]);
+    // Do NOT auto-login or redirect — user will sign in manually after registration
+  }, []);
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -88,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, signup, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, signup, logout, updateProfile, isLoginModalOpen, setLoginModalOpen, isSignupModalOpen, setSignupModalOpen }}>
       {children}
     </AuthContext.Provider>
   );

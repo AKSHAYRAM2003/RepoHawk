@@ -6,13 +6,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import AnalyzeModal from "./AnalyzeModal";
 
 export default function AnalyzeCTA() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, setLoginModalOpen } = useAuth();
   const router = useRouter();
   const [isAnalyzeModalOpen, setIsAnalyzeModalOpen] = useState(false);
 
   const handleClick = () => {
     if (!isAuthenticated) {
-      router.push("/auth/login");
+      setLoginModalOpen(true);
     } else {
       setIsAnalyzeModalOpen(true);
     }
