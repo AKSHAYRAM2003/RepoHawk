@@ -6,7 +6,7 @@ Handles the execution of the agentic analysis pipeline and database persistence.
 import uuid
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.repo import Repo
@@ -118,7 +118,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
 
                 # 4. Update Repo
                 repo.analysis_status = "complete"
-                repo.last_analyzed_at = datetime.utcnow()
+                repo.last_analyzed_at = datetime.now(timezone.utc)
                 repo.file_count = final_state.get("total_files", 0)
                 
                 await db.commit()
