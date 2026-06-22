@@ -51,6 +51,10 @@ app.include_router(auth.router, prefix="/api/v1")
 @app.on_event("startup")
 async def startup():
     _validate_config()
+    # Recover any repos stuck in 'running'/'queued' from a previous server crash/restart.
+    from app.services.analysis import recover_stale_analyses
+    from app.core.database import async_session_maker
+    await recover_stale_analyses(async_session_maker)
     logger.info(f"RepoHawk starting — CORS origins: {_origins}")
 
 

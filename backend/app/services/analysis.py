@@ -6,15 +6,46 @@ Handles the execution of the agentic analysis pipeline and database persistence.
 import uuid
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app.models.repo import Repo
 from app.models.diagram import Diagram
 from app.agents.graph import analysis_graph
 from app.core.progress import progress_manager, task_manager
 
 logger = logging.getLogger("repohawk.analysis")
+
+
+async def recover_stale_analyses(db_factory):
+    """
+    Called once at server startup. Any repo stuck in 'running' or 'queued'
+    state is from a previous server process that died (crash, restart, kill).
+    Mark these as 'failed' so the frontend stops showing an infinite spinner
+    and the user can re-run the analysis.
+    """
+    async with db_factory() as db:
+        result = await db.execute(
+            select(Repo).where(Repo.analysis_status.in_(["running", "queued"]))
+        )
+        stale = result.scalars().all()
+        if not stale:
+            return
+        for repo in stale:
+            logger.warning(
+                f"Startup recovery: repo '{repo.name}' ({repo.id}) was stuck "
+                f"in '{repo.analysis_status}' — marking as failed (server restart detected)."
+            )
+            repo.analysis_status = "failed"
+            current_logs = list(repo.logs or [])
+            current_logs.append({
+                "step": "recovery",
+                "log": "⚠️ Analysis was interrupted by a server restart. Please re-run.",
+                "status": "failed",
+            })
+            repo.logs = current_logs
+        await db.commit()
+        logger.info(f"Startup recovery: cleaned {len(stale)} stale repo(s).")
 
 
 async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
@@ -118,7 +149,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
 
                 # 4. Update Repo
                 repo.analysis_status = "complete"
-                repo.last_analyzed_at = datetime.now(timezone.utc)
+                repo.last_analyzed_at = datetime.utcnow()
                 repo.file_count = final_state.get("total_files", 0)
                 
                 await db.commit()
