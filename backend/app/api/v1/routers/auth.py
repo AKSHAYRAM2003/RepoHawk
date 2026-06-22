@@ -19,15 +19,18 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 COOKIE_ACCESS = "repohawk_access_token"
 COOKIE_REFRESH = "repohawk_refresh_token"
 
+# Auto-detect secure flag: True for https, False for localhost dev
+_IS_HTTPS = settings.FRONTEND_URL.startswith("https://")
+
 
 def _set_auth_cookies(response: Response, access: str, refresh: str):
     response.set_cookie(
         key=COOKIE_ACCESS, value=access, httponly=True, samesite="lax",
-        max_age=15 * 60, path="/", secure=False,
+        max_age=15 * 60, path="/", secure=_IS_HTTPS,
     )
     response.set_cookie(
         key=COOKIE_REFRESH, value=refresh, httponly=True, samesite="lax",
-        max_age=7 * 24 * 60 * 60, path="/api/auth", secure=False,
+        max_age=7 * 24 * 60 * 60, path="/api/auth", secure=_IS_HTTPS,
     )
 
 

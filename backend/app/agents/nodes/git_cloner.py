@@ -48,10 +48,10 @@ def cleanup_clone(repo_id: str) -> None:
 def git_cloner_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     LangGraph node: Clones a GitHub repository.
-    
+
     Args:
         state: Current AnalysisState (as dict — LangGraph passes dicts)
-    
+
     Returns:
         Partial state update with cloned_path, current_step, progress_log
     """
@@ -86,12 +86,14 @@ def git_cloner_node(state: Dict[str, Any]) -> Dict[str, Any]:
     os.makedirs(CLONE_BASE_DIR, exist_ok=True)
 
     try:
-        # Clone with depth=1 for speed (we only need latest code, not full history)
+        # Clone with depth=1 + filter=blob:none for speed and to prevent
+        # huge repos from exhausting disk. Content is fetched on demand by tree-sitter.
         Repo.clone_from(
             repo_url,
             clone_path,
             depth=1,
             single_branch=True,
+            filter="blob:none",
         )
 
         return {
