@@ -83,8 +83,15 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
             final_state = initial_state.copy()
 
             try:
-                # Run the compiled graph step-by-step using astream
-                async for event in analysis_graph.astream(initial_state):
+                # Enforce a maximum duration per pipeline step so the
+                # analysis can't hang indefinitely if an LLM call stalls.
+                step_timeout = 300  # seconds per step
+                ait = analysis_graph.astream(initial_state).__aiter__()
+                while True:
+                    try:
+                        event = await asyncio.wait_for(ait.__anext__(), timeout=step_timeout)
+                    except StopAsyncIteration:
+                        break
                     for node_name, node_state in event.items():
                         # Merge node updates
                         for key, val in node_state.items():
@@ -165,6 +172,19 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 current_logs.append(final_event)
                 repo.logs = current_logs
                 await db.commit()
+
+            except asyncio.TimeoutError:
+                repo.analysis_status = "failed"
+                timeout_event = {
+                    "step": "pipeline_error",
+                    "log": "⏰ Analysis timed out after 10 minutes. Try analyzing a smaller repository.",
+                    "status": "failed"
+                }
+                current_logs = list(repo.logs or [])
+                current_logs.append(timeout_event)
+                repo.logs = current_logs
+                await db.commit()
+                progress_manager.publish(str(repo_id), timeout_event)
 
             except asyncio.CancelledError:
                 # Handle cancellation explicitly

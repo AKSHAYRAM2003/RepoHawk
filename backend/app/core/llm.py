@@ -226,9 +226,9 @@ def get_rewrite_llm() -> ChatOpenAI:
 
 def get_diagram_llm() -> ChatOpenAI:
     """Architect Agent — strong reasoning model for architecture diagram generation"""
-    return get_llm(model=settings.MODEL_DIAGRAM, temperature=0.1, timeout=180.0)
+    return get_llm(model=settings.MODEL_DIAGRAM, temperature=0.1, timeout=60.0)
 
 
 def get_critique_llm() -> ChatOpenAI:
     """Critique Agent — strong reasoning for diagram quality assessment"""
-    return get_llm(model=settings.MODEL_CRITIQUE, temperature=0.0, timeout=120.0)
+    return get_llm(model=settings.MODEL_CRITIQUE, temperature=0.0, timeout=30.0)
