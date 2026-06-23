@@ -11,7 +11,9 @@ class ChatSession(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     repo_id = Column(UUID(as_uuid=True), ForeignKey("repos.id"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     repo = relationship("Repo", back_populates="chat_sessions")
     user = relationship("User", back_populates="chat_sessions")

@@ -542,6 +542,12 @@ export default function QAChatPanel({
   const [historyOpen, setHistoryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Incremented when we explicitly want to reload the current session's messages
+  // (e.g. user clicked the same session again in history). Acts as a dependency
+  // trigger without mangling sessionId.
+  const reloadCounter = useRef(0);
+  const [reloadTick, setReloadTick] = useState(0);
+  const autoResumedRepos = useRef<Set<string>>(new Set());
   const hasMessages = messages.length > 0;
 
   // Fetch repo metadata for the context chip above the input
@@ -567,12 +573,28 @@ export default function QAChatPanel({
     } catch {}
   }, [sessionId, repoId]);
 
-  // Load existing history on mount (commit 8)
+  // Load existing history on mount and when sessionId changes
   useEffect(() => {
     let cancelled = false;
     async function loadHistory() {
       if (!sessionId) {
-        setIsLoadingHistory(false);
+        if (!autoResumedRepos.current.has(repoId)) {
+          autoResumedRepos.current.add(repoId);
+          // Auto-resume logic: if no session is active, fetch the latest one for this repo
+          try {
+            const r = await fetch(`/api/chat/sessions?repo_id=${encodeURIComponent(repoId)}`);
+            if (r.ok) {
+              const data = await r.json();
+              if (!cancelled && data.sessions && data.sessions.length > 0) {
+                setSessionId(data.sessions[0].id);
+                return; // The effect will re-run with the new sessionId
+              }
+            }
+          } catch (err) {
+            console.warn("Failed to auto-resume session:", err);
+          }
+        }
+        if (!cancelled) setIsLoadingHistory(false);
         return;
       }
       try {
@@ -580,6 +602,7 @@ export default function QAChatPanel({
           `/api/chat/sessions/${repoId}/${sessionId}/messages`
         );
         if (!r.ok) {
+          console.warn(`Failed to load messages for session ${sessionId}: ${r.status}`);
           if (!cancelled) setIsLoadingHistory(false);
           return;
         }
@@ -600,9 +623,10 @@ export default function QAChatPanel({
         if (!cancelled) setIsLoadingHistory(false);
       }
     }
+    setIsLoadingHistory(true);
     loadHistory();
     return () => { cancelled = true; };
-  }, [repoId, sessionId]);
+  }, [repoId, sessionId, reloadTick]);
 
   // Smooth scroll to bottom on new messages
   useEffect(() => {
@@ -1379,10 +1403,31 @@ export default function QAChatPanel({
           repoId={repoId}
           repoName={repoName}
           repoOwner={repoOwner}
+          currentSessionId={sessionId}
           onClose={() => setHistoryOpen(false)}
           onSelectSession={(id) => {
-            setSessionId(id);
+            // Persist selected session to localStorage so reloads resume correctly
+            try {
+              window.localStorage.setItem(`repohawk:chat:session:${repoId}`, id);
+            } catch {}
+            if (id === sessionId) {
+              // Same session clicked — bump reloadTick to force the useEffect to
+              // re-fetch messages without mangling sessionId (avoids auto-resume race).
+              setMessages([]);
+              reloadCounter.current += 1;
+              setReloadTick(reloadCounter.current);
+            } else {
+              setSessionId(id);
+              setMessages([]);
+              setIsLoadingHistory(true);
+            }
             setHistoryOpen(false);
+          }}
+          onDeleteSession={(deletedId) => {
+            // If user deleted the currently active session, reset to a clean state
+            if (deletedId === sessionId) {
+              startNewSession();
+            }
           }}
         />
       )}
@@ -1560,14 +1605,18 @@ function ChatHistoryModal({
   repoId,
   repoName,
   repoOwner,
+  currentSessionId,
   onClose,
   onSelectSession,
+  onDeleteSession,
 }: {
   repoId: string;
   repoName: string | null;
   repoOwner: string | null;
+  currentSessionId: string | null;
   onClose: () => void;
   onSelectSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
 }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1595,13 +1644,17 @@ function ChatHistoryModal({
   const deleteSession = async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     try {
-      // Assuming a DELETE endpoint exists, if not this will just fail gracefully
-      await fetch(`/api/chat/sessions/${repoId}/${sessionId}`, {
+      const r = await fetch(`/api/chat/sessions/${repoId}/${sessionId}`, {
         method: "DELETE",
       });
-      fetchSessions();
+      if (r.ok) {
+        onDeleteSession(sessionId);
+        fetchSessions();
+      } else {
+        console.warn("Failed to delete session:", r.status);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Delete session error:", err);
     }
   };
 
@@ -1617,13 +1670,16 @@ function ChatHistoryModal({
     const msPerDay = msPerHour * 24;
     const msPerMonth = msPerDay * 30;
 
-    const elapsed = Date.now() - new Date(dateStr).getTime();
+    // Backend stores UTC — parse correctly regardless of trailing Z
+    const utcDateStr = dateStr.endsWith('Z') || dateStr.endsWith('+00:00') ? dateStr : dateStr + 'Z';
+    const elapsed = Date.now() - new Date(utcDateStr).getTime();
 
-    if (elapsed < msPerMinute) return Math.round(elapsed / 1000) + " seconds ago";
-    else if (elapsed < msPerHour) return Math.round(elapsed / msPerMinute) + " mins ago";
-    else if (elapsed < msPerDay) return Math.round(elapsed / msPerHour) + " hours ago";
-    else if (elapsed < msPerMonth) return Math.round(elapsed / msPerDay) + " days ago";
-    else return Math.round(elapsed / msPerMonth) + " mos ago";
+    if (elapsed < 0) return "just now";
+    if (elapsed < msPerMinute) return "just now";
+    if (elapsed < msPerHour) return Math.round(elapsed / msPerMinute) + "m ago";
+    if (elapsed < msPerDay) return Math.round(elapsed / msPerHour) + "h ago";
+    if (elapsed < msPerMonth) return Math.round(elapsed / msPerDay) + "d ago";
+    return Math.round(elapsed / msPerMonth) + "mo ago";
   };
 
   const displayRepo = repoOwner && repoName ? `${repoOwner}/${repoName}` : repoName || "RepoHawk";
@@ -1689,10 +1745,6 @@ function ChatHistoryModal({
 
         {/* List Body */}
         <div style={{ padding: "16px 20px", overflowY: "auto", flex: 1 }}>
-          <p style={{ fontSize: 12, color: "var(--on-surface-variant)", fontWeight: 600, marginBottom: 12 }}>
-            Recent
-          </p>
-          
           {loading ? (
              <p style={{ color: "var(--on-surface-variant)", fontSize: 13, textAlign: "center", padding: 24 }}>
                Loading history...
@@ -1702,61 +1754,112 @@ function ChatHistoryModal({
                No conversations found.
              </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {filteredSessions.map((s) => (
-                <div
-                  key={s.id}
-                  onClick={() => onSelectSession(s.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "12px 16px",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    transition: "background 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background = "var(--surface-container-highest)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background = "transparent";
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, overflow: "hidden" }}>
-                    <p style={{ margin: 0, fontSize: 14, color: "var(--on-surface)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {s.title || s.id}
-                    </p>
-                    <span style={{ fontSize: 12, color: "var(--on-surface-variant)", whiteSpace: "nowrap" }}>
-                      {displayRepo}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    <span style={{ fontSize: 12, color: "var(--on-surface-variant)", whiteSpace: "nowrap" }}>
-                      {timeAgo(s.updated_at || s.created_at)}
-                    </span>
-                    <button
-                      onClick={(e) => deleteSession(e, s.id)}
-                      title="Delete Conversation"
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "var(--on-surface-variant)",
-                        padding: 0,
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.color = "rgba(244,63,94,1)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {(() => {
+                // Group sessions by date
+                const groups: Record<string, typeof filteredSessions> = {
+                  "Today": [],
+                  "Yesterday": [],
+                  "Previous 7 Days": [],
+                  "Older": []
+                };
+
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const sevenDaysAgo = new Date(today);
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+                filteredSessions.forEach((s) => {
+                  const raw = s.updated_at || s.created_at;
+                  const utcStr = raw.endsWith('Z') || raw.endsWith('+00:00') ? raw : raw + 'Z';
+                  const d = new Date(utcStr);
+                  if (d.toDateString() === today.toDateString()) {
+                    groups["Today"].push(s);
+                  } else if (d.toDateString() === yesterday.toDateString()) {
+                    groups["Yesterday"].push(s);
+                  } else if (d > sevenDaysAgo) {
+                    groups["Previous 7 Days"].push(s);
+                  } else {
+                    groups["Older"].push(s);
+                  }
+                });
+
+                return Object.entries(groups).map(([groupName, groupSessions]) => {
+                  if (groupSessions.length === 0) return null;
+                  return (
+                    <div key={groupName} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <p style={{ fontSize: 12, color: "var(--on-surface-variant)", fontWeight: 600, margin: "0 0 8px 8px" }}>
+                        {groupName}
+                      </p>
+                      {groupSessions.map((s) => (
+                        <div
+                          key={s.id}
+                          onClick={() => onSelectSession(s.id)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "12px 16px",
+                            borderRadius: 8,
+                            cursor: "pointer",
+                            transition: "background 0.15s",
+                            background: currentSessionId === s.id
+                              ? "color-mix(in srgb, var(--primary) 12%, transparent)"
+                              : "transparent",
+                            borderLeft: currentSessionId === s.id
+                              ? "3px solid var(--primary)"
+                              : "3px solid transparent",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (currentSessionId !== s.id) {
+                              (e.currentTarget as HTMLDivElement).style.background = "var(--surface-container-highest)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (currentSessionId !== s.id) {
+                              (e.currentTarget as HTMLDivElement).style.background = "transparent";
+                            }
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, overflow: "hidden" }}>
+                            <p style={{ margin: 0, fontSize: 14, color: "var(--on-surface)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {s.title || "Untitled Conversation"}
+                            </p>
+                            <span style={{ fontSize: 12, color: "var(--on-surface-variant)", whiteSpace: "nowrap" }}>
+                              {displayRepo}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                            <span style={{ fontSize: 12, color: "var(--on-surface-variant)", whiteSpace: "nowrap" }}>
+                              {timeAgo(s.updated_at || s.created_at)}
+                            </span>
+                            <button
+                              onClick={(e) => deleteSession(e, s.id)}
+                              title="Delete Conversation"
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "var(--on-surface-variant)",
+                                padding: 0,
+                              }}
+                              onMouseEnter={(e) => {
+                                (e.currentTarget as HTMLButtonElement).style.color = "rgba(244,63,94,1)";
+                              }}
+                              onMouseLeave={(e) => {
+                                (e.currentTarget as HTMLButtonElement).style.color = "var(--on-surface-variant)";
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           )}
         </div>

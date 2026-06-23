@@ -156,6 +156,31 @@ async def rewrite_query(question: str, chat_history: List) -> str:
         return question
 
 
+async def generate_chat_title(question: str) -> Optional[str]:
+    """
+    Asynchronously generates a short title (3-5 words) for a new chat session.
+    """
+    import asyncio
+    from app.core.llm import get_rewrite_llm
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    async def _do_generate() -> str:
+        messages = [
+            SystemMessage(content="You are a helpful assistant. Generate a very short, concise title (3 to 5 words max) for a chat session that starts with the user's message. Do not include quotes or punctuation. Just the title."),
+            HumanMessage(content=f"User message: {question}")
+        ]
+        llm = get_rewrite_llm()
+        result = llm.invoke(messages)
+        title = (getattr(result, "content", "") or "").strip().strip('"').strip("'")
+        return title[:50]
+
+    try:
+        return await asyncio.wait_for(_do_generate(), timeout=5.0)
+    except Exception as e:
+        logger.debug(f"QA Agent: Title generation failed: {e}")
+        return None
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _coerce_valid_node_ids(raw) -> List[str]:
     """Accept whatever the caller passed for valid_node_ids and normalize to a list of strings."""
@@ -366,7 +391,14 @@ def qa_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
                     break
                 kept.append(msg)
             kept.reverse()
-            messages.extend(kept)
+            
+            if kept:
+                history_text = "## Previous Conversation Context\n\n"
+                for i, msg in enumerate(kept):
+                    role = "User" if getattr(msg, "type", "") == "human" or "human" in str(type(msg)).lower() else "Assistant"
+                    content = getattr(msg, "content", "") or ""
+                    history_text += f"### Turn {i+1} ({role}):\n{content}\n\n"
+                messages.append(SystemMessage(content=history_text))
 
         messages.append(HumanMessage(content=question))
 
@@ -630,7 +662,15 @@ async def astream_qa_answer(
                     break
                 kept.append(msg)
             kept.reverse()
-            messages.extend(kept)
+            
+            if kept:
+                history_text = "## Previous Conversation Context\n\n"
+                for i, msg in enumerate(kept):
+                    role = "User" if getattr(msg, "type", "") == "human" or "human" in str(type(msg)).lower() else "Assistant"
+                    content = getattr(msg, "content", "") or ""
+                    history_text += f"### Turn {i+1} ({role}):\n{content}\n\n"
+                messages.append(SystemMessage(content=history_text))
+
         messages.append(HumanMessage(content=question))
 
         # 5. Stream the LLM response

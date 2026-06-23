@@ -119,6 +119,13 @@ async def chat_stream(
 
     history_messages = await chat_service.load_history_for_context(db, session_id)
 
+    # Trigger background title generation if no title exists or it's the first message
+    title_task = None
+    if len(history_messages) <= 1 or not session.title:
+        import asyncio
+        from app.agents.nodes.qa_agent import generate_chat_title
+        title_task = asyncio.create_task(generate_chat_title(payload.query))
+
     async def event_generator():
         collected_answer = ""
         collected_highlight = ""
@@ -149,6 +156,18 @@ async def chat_stream(
             err = {"type": "error", "message": str(e)}
             yield {"event": "message", "data": json.dumps(err)}
             yield {"event": "message", "data": json.dumps({"type": "done"})}
+
+        # Resolve title task if it was created
+        if title_task:
+            try:
+                generated_title = await title_task
+                if generated_title:
+                    from app.core.database import async_session_maker
+                    async with async_session_maker() as new_db:
+                        await chat_service.set_session_title(new_db, session_id, generated_title)
+                    yield {"event": "message", "data": json.dumps({"type": "title", "title": generated_title})}
+            except Exception as e:
+                logger.warning(f"Failed to await title task: {e}")
 
         if collected_answer.strip():
             try:
@@ -223,6 +242,19 @@ async def list_sessions(
 ):
     sessions = await chat_service.list_sessions_for_repo(db, repo_id, current_user.id)
     return {"sessions": sessions}
+
+
+@router.delete("/sessions/{repo_id}/{session_id}")
+async def delete_chat_session(
+    repo_id: str,
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    success = await chat_service.delete_session(db, session_id, repo_id, current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found or could not be deleted")
+    return {"status": "success"}
 
 
 @router.get("/sessions/{repo_id}/{session_id}/messages")
