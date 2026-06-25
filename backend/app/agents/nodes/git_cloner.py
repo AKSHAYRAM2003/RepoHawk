@@ -86,14 +86,15 @@ def git_cloner_node(state: Dict[str, Any]) -> Dict[str, Any]:
     os.makedirs(CLONE_BASE_DIR, exist_ok=True)
 
     try:
-        # Clone with depth=1 + filter=blob:none for speed and to prevent
-        # huge repos from exhausting disk. Content is fetched on demand by tree-sitter.
+        # Shallow clone (depth=1) — downloads all file blobs so the AST parser
+        # and embedder have actual content to work with.
+        # NOTE: filter="blob:none" was previously used for speed but it omits
+        # file content, causing "No parsed files to embed" in the pipeline.
         Repo.clone_from(
             repo_url,
             clone_path,
             depth=1,
             single_branch=True,
-            filter="blob:none",
         )
 
         return {

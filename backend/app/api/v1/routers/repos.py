@@ -188,6 +188,36 @@ async def stop_repo_analysis(
         return {"status": "success", "message": "Analysis stopped."}
     return {"status": "ignored", "message": "No active analysis task to stop."}
 
+@router.post("/{repo_id}/retry", response_model=RepoResponse)
+async def retry_repo_analysis(
+    repo_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
+    result = await db.execute(stmt)
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+        
+    if repo.analysis_status in ["queued", "running"]:
+        raise HTTPException(status_code=400, detail="Analysis is already running")
+
+    # Reset state
+    repo.analysis_status = "queued"
+    repo.logs = []
+    
+    # Optional cleanup of previous artifacts
+    from sqlalchemy import delete
+    await db.execute(delete(Diagram).where(Diagram.repo_id == repo_id))
+    
+    await db.commit()
+    await db.refresh(repo)
+
+    background_tasks.add_task(run_repo_analysis, repo.id, async_session_maker)
+    return repo
+
 @router.delete("/{repo_id}")
 async def delete_repository(
     repo_id: uuid.UUID,

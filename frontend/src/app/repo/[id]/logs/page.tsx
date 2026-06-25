@@ -40,7 +40,7 @@ function LogEntry({ entry, index, isLatest }: { entry: { step: string; log: stri
 
 export default function LogsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
-  const { repo, status, logs, currentStep, error, isNotFound, refetch, stopAnalysis } = useRepoAnalysis(id);
+  const { repo, status, logs, currentStep, error, isNotFound, refetch, stopAnalysis, retryAnalysis } = useRepoAnalysis(id);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -144,8 +144,8 @@ export default function LogsPage({ params }: { params: Promise<{ id: string }> }
             </button>
           ) : (
             <button
-              onClick={refetch}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white active:scale-95 transition-all cursor-pointer shadow-sm"
+              onClick={retryAnalysis}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 hover:text-white active:scale-95 transition-all cursor-pointer shadow-sm"
             >
               <RefreshCw size={12} />
               Start Analysis

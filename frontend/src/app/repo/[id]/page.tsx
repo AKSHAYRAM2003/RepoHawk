@@ -21,7 +21,7 @@ import Link from "next/link";
 
 export default function ArchitectureCanvasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
-  const { repo, status, logs, currentStep, error, isNotFound, refetch, stopAnalysis } = useRepoAnalysis(id);
+  const { repo, status, logs, currentStep, error, isNotFound, refetch, stopAnalysis, retryAnalysis } = useRepoAnalysis(id);
   const { diagram, loading: diagramLoading } = useDiagram(id, status);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const diagramNodes = diagram?.reactflow_json?.nodes ?? [];
@@ -80,6 +80,36 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
   }
 
   // ── Failed ───────────────────────────────────────────────────────────────────
+  // ── Failed ───────────────────────────────────────────────────────────────────
+  const pipelineError = status === "failed" ? logs.find(l => l.status === "failed")?.log || logs[logs.length - 1]?.log : null;
+  const rawError = error || pipelineError;
+
+  const getFriendlyError = (raw: string | null) => {
+    if (!raw) return "An unknown error occurred during analysis.";
+    const msg = raw.toLowerCase();
+    
+    if (msg.includes("git clone failed") || msg.includes("exit code(128)")) {
+      return "We couldn't access this repository. Please make sure the URL is correct and the repository is public.";
+    }
+    if (msg.includes("invalid github url") || msg.includes("not found")) {
+      return "The link provided doesn't look like a valid, public GitHub repository.";
+    }
+    if (msg.includes("rate limit") || msg.includes("429") || msg.includes("too many requests")) {
+      return "The AI service is currently experiencing high traffic. Please try again in a few minutes.";
+    }
+    if (msg.includes("no parsed files") || msg.includes("blob:none")) {
+      return "We couldn't find any supported source code files in this repository to analyze.";
+    }
+    if (msg.includes("timeout") || msg.includes("time out")) {
+      return "The analysis took too long and timed out. The repository might be too large.";
+    }
+    
+    // Clean up emojis from raw logs if no specific friendly message matches
+    return raw.replace(/^[❌⚠️]\s*/, "");
+  };
+
+  const friendlyError = getFriendlyError(rawError);
+
   if (status === "failed") {
     return (
       <div className="w-full h-full flex flex-col items-center p-4 sm:p-8 bg-surface overflow-y-auto">
@@ -90,26 +120,27 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-on-surface">Analysis Failed</h2>
             <p className="text-on-surface-variant text-sm mt-2">
-              The AI pipeline was unable to complete the architecture mapping for this repository.
+              {friendlyError}
             </p>
           </div>
 
-          {error && (
+          {rawError && rawError !== friendlyError && (
             <div
-              className="w-full text-left p-3 sm:p-4 rounded-xl border font-mono text-xs overflow-x-auto max-h-32"
+              className="w-full text-left p-3 sm:p-4 rounded-xl border font-mono text-xs overflow-x-auto max-h-32 mt-2"
               style={{
                 borderColor: "color-mix(in srgb, #f43f5e 20%, transparent)",
                 background: "color-mix(in srgb, #f43f5e 5%, transparent)",
                 color: "#f43f5e",
               }}
             >
-              {error}
+              <span className="font-bold block mb-1">Technical details:</span>
+              {rawError}
             </div>
           )}
 
           <div className="flex flex-col sm:flex-row gap-3 w-full">
             <button
-              onClick={refetch}
+              onClick={retryAnalysis}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-emerald-600 hover:opacity-90 transition-all cursor-pointer"
             >
               <RefreshCw size={16} />

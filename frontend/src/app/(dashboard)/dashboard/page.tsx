@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  GitBranch, 
-  Search, 
-  ExternalLink, 
-  RefreshCw, 
-  Clock, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  GitBranch,
+  Search,
+  ExternalLink,
+  RefreshCw,
+  Clock,
+  CheckCircle,
+  AlertCircle,
   Loader2,
   Trash2,
   Plus
@@ -141,7 +141,7 @@ export default function DashboardPage() {
           </button>
           <Link
             href="/new-repo"
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-on-primary bg-primary-accent hover:opacity-90 transition-all"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-on-primary bg-primary-accent hover:opacity-90 transition-all cursor-pointer"
           >
             <Plus size={13} />
             New Repo
@@ -192,7 +192,7 @@ export default function DashboardPage() {
             {!searchQuery && (
               <Link
                 href="/new-repo"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-on-primary bg-primary-accent hover:opacity-90 transition-all mt-2"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-on-primary bg-primary-accent hover:opacity-90 transition-all mt-2 cursor-pointer"
               >
                 <Plus size={13} /> Add Repository
               </Link>
@@ -267,10 +267,10 @@ export default function DashboardPage() {
                     <Clock size={11} />
                     {repo.created_at
                       ? new Date(repo.created_at).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
                       : "N/A"}
                   </span>
 

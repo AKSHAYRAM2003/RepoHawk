@@ -148,6 +148,25 @@ export function useRepoAnalysis(repoId: string) {
     }
   }, [repoId, fetchRepoDetails]);
 
+  const retryAnalysis = useCallback(async () => {
+    try {
+      setLogs([]);
+      setError(null);
+      setStatus("queued");
+      const res = await fetch(`/api/repos/${repoId}/retry`, {
+        method: "POST"
+      });
+      if (!res.ok) {
+        throw new Error("Failed to retry analysis");
+      }
+      await fetchRepoDetails();
+    } catch (err: any) {
+      console.error("Failed to retry analysis:", err);
+      setError(err.message);
+      setStatus("failed");
+    }
+  }, [repoId, fetchRepoDetails]);
+
   return {
     repo,
     status,
@@ -157,5 +176,6 @@ export function useRepoAnalysis(repoId: string) {
     isNotFound,
     refetch,
     stopAnalysis,
+    retryAnalysis,
   };
 }
