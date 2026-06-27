@@ -370,6 +370,28 @@ function MessageBubble({
   onHighlightNode: (id: string) => void;
   onHighlightFile: (file: string) => void;
 }) {
+  // Hooks must be declared before any conditional return (Rules of Hooks)
+  const [isCopied, setIsCopied] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!message.content) return;
+    navigator.clipboard.writeText(message.content).then(() => {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 1500);
+    }).catch(() => {
+      // Fallback for browsers without clipboard API
+      const el = document.createElement("textarea");
+      el.value = message.content;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 1500);
+    });
+  }, [message.content]);
+
   if (message.role === "user") {
     return (
       <div
@@ -403,10 +425,11 @@ function MessageBubble({
       </div>
     );
   }
-
   // Assistant bubble
   return (
     <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -445,9 +468,10 @@ function MessageBubble({
         </span>
       </div>
 
-      {/* Content area */}
+      {/* Content area with hover-reveal copy button */}
       <div
         style={{
+          position: "relative",
           background: "var(--surface-container-high)",
           border: `1px solid ${message.isError ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.06)"}`,
           borderRadius: "4px 13px 13px 13px",
@@ -455,6 +479,46 @@ function MessageBubble({
           backdropFilter: "blur(10px)",
         }}
       >
+        {/* Copy button — top-right, hover reveal */}
+        {!message.isLoading && !message.isError && message.content && (
+          <button
+            onClick={handleCopy}
+            title={isCopied ? "Copied!" : "Copy response"}
+            style={{
+              position: "absolute",
+              top: 7,
+              right: 7,
+              width: 22,
+              height: 22,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: isCopied ? "rgba(16,185,129,0.4)" : "rgba(255,255,255,0.08)",
+              background: isCopied ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.04)",
+              color: isCopied ? "#10b981" : "#475569",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              opacity: isHovered || isCopied ? 1 : 0,
+              transition: "opacity 0.15s, background 0.15s, color 0.15s, border-color 0.15s",
+              zIndex: 2,
+            }}
+            onMouseEnter={(e) => {
+              if (!isCopied) {
+                e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+                e.currentTarget.style.color = "#94a3b8";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isCopied) {
+                e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                e.currentTarget.style.color = "#475569";
+              }
+            }}
+          >
+            {isCopied ? <Check size={11} /> : <Copy size={11} />}
+          </button>
+        )}
         {message.isLoading && !message.content ? (
           <TypingIndicator />
         ) : message.isError ? (
@@ -518,9 +582,13 @@ function MessageBubble({
 export default function QAChatPanel({
   repoId,
   validNodeIds = [],
+  pendingQuestion,
+  onPendingQuestionConsumed,
 }: {
   repoId: string;
   validNodeIds?: string[];
+  pendingQuestion?: string | null;
+  onPendingQuestionConsumed?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -548,6 +616,14 @@ export default function QAChatPanel({
   const reloadCounter = useRef(0);
   const [reloadTick, setReloadTick] = useState(0);
   const autoResumedRepos = useRef<Set<string>>(new Set());
+  // Tracks session IDs that were just issued by the server during an active
+  // streaming request. We must NOT load history for these because the answer
+  // hasn't been persisted yet and would overwrite the optimistic UI.
+  const streamingIssuedSessionId = useRef<string | null>(null);
+  // Set to true when the user explicitly clicks "New Chat" (+ button).
+  // Prevents the loadHistory effect from showing a loading spinner or
+  // auto-resuming the previous session on that single run.
+  const explicitNewSessionRef = useRef(false);
   const hasMessages = messages.length > 0;
 
   // Fetch repo metadata for the context chip above the input
@@ -578,6 +654,13 @@ export default function QAChatPanel({
     let cancelled = false;
     async function loadHistory() {
       if (!sessionId) {
+        // If the user explicitly started a new session (clicked +), skip
+        // auto-resume and immediately show the empty state.
+        if (explicitNewSessionRef.current) {
+          explicitNewSessionRef.current = false; // consume the flag
+          if (!cancelled) setIsLoadingHistory(false);
+          return;
+        }
         if (!autoResumedRepos.current.has(repoId)) {
           autoResumedRepos.current.add(repoId);
           // Auto-resume logic: if no session is active, fetch the latest one for this repo
@@ -597,6 +680,16 @@ export default function QAChatPanel({
         if (!cancelled) setIsLoadingHistory(false);
         return;
       }
+
+      // Bug fix: If this sessionId was just issued by the server during an
+      // active streaming request, the answer hasn't been persisted yet.
+      // Loading history now would overwrite the optimistic streaming messages
+      // with an incomplete server snapshot. Skip and let the stream finish.
+      if (streamingIssuedSessionId.current === sessionId) {
+        if (!cancelled) setIsLoadingHistory(false);
+        return;
+      }
+
       try {
         const r = await fetch(
           `/api/chat/sessions/${repoId}/${sessionId}/messages`
@@ -640,8 +733,18 @@ export default function QAChatPanel({
         window.localStorage.removeItem(`repohawk:chat:session:${repoId}`);
       } catch {}
     }
+    // Reset the streaming-issued session tracker so future streams work correctly
+    streamingIssuedSessionId.current = null;
+    // Signal loadHistory to skip auto-resume and loading spinner on the next run
+    explicitNewSessionRef.current = true;
+    // Remove from autoResumedRepos so the next "new session" state is clean
+    autoResumedRepos.current.delete(repoId);
     setSessionId(null);
     setMessages([]);
+    // Immediately mark history as not loading — we're starting fresh, no
+    // server data needed. This fixes the two-click bug where the loading
+    // overlay hid the suggestions panel after the first click.
+    setIsLoadingHistory(false);
   }, [repoId]);
 
   // Auto-resize textarea as user types
@@ -658,6 +761,14 @@ export default function QAChatPanel({
       new CustomEvent("repohawk-highlight-node", { detail: { nodeId } })
     );
   }, []);
+
+  // Auto-fire pending question from Properties panel "Ask AI" button
+  useEffect(() => {
+    if (!pendingQuestion || isLoading) return;
+    sendMessage(pendingQuestion);
+    onPendingQuestionConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingQuestion]);
 
   // Guess node ID from a file path for source pill clicks
   const handleHighlightFile = useCallback(
@@ -759,8 +870,11 @@ export default function QAChatPanel({
               }
 
               if (event.type === "session" && event.session_id) {
-                // Server-issued session id; persist it
+                // Server-issued session id; persist it.
+                // Mark it as streaming-issued so loadHistory skips overwriting
+                // the optimistic messages while the stream is still in flight.
                 if (!sessionId) {
+                  streamingIssuedSessionId.current = event.session_id;
                   setSessionId(event.session_id);
                 }
               } else if (event.type === "token" && event.delta) {
@@ -854,6 +968,9 @@ export default function QAChatPanel({
         );
       } finally {
         setIsLoading(false);
+        // Stream is done — clear the streaming-issued guard so subsequent
+        // history loads (e.g. clicking the session in history panel) work normally.
+        streamingIssuedSessionId.current = null;
       }
     },
     [repoId, sessionId, isLoading, handleHighlightNode]
