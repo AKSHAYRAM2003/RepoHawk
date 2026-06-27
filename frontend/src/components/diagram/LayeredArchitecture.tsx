@@ -539,21 +539,31 @@ function DiagramInner({ rawNodes, rawEdges, containerRef, repoName }: {
     if (!el || isExporting) return;
     setIsExporting(true);
     try {
-      // Temporarily hide the minimap and panels for a clean export
+      // Step 1: fit the entire diagram into view so nothing is cropped
+      fitView({ padding: 0.08, duration: 200 });
+      // Step 2: wait for the fitView animation to finish before capturing
+      await new Promise((r) => setTimeout(r, 350));
+
+      // Step 3: capture at 4× device pixel ratio for crisp output
       const dataUrl = await toPng(el, {
         backgroundColor: "#080a12",
-        pixelRatio: 2,
+        pixelRatio: 4,          // 4× = ~300 DPI quality; stays sharp when zoomed
+        cacheBust: true,        // avoid stale cached images
         filter: (node) => {
-          // Keep everything except the react-flow__panel elements (controls/search overlays)
+          // Strip UI chrome — controls, minimap, search bar
           if (node.classList?.contains("react-flow__panel")) return false;
           if (node.classList?.contains("react-flow__minimap")) return false;
+          if (node.classList?.contains("react-flow__controls")) return false;
           return true;
         },
       });
+
+      // Step 4: trigger download
       const link = document.createElement("a");
       link.download = `repohawk-${repoName ?? "diagram"}-architecture.png`;
       link.href = dataUrl;
       link.click();
+
       setExported(true);
       setTimeout(() => setExported(false), 2000);
     } catch (err) {
@@ -561,7 +571,7 @@ function DiagramInner({ rawNodes, rawEdges, containerRef, repoName }: {
     } finally {
       setIsExporting(false);
     }
-  }, [isExporting, repoName]);
+  }, [isExporting, repoName, fitView]);
 
   const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
     () => buildLayout(rawNodes, rawEdges),

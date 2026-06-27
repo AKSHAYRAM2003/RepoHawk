@@ -433,8 +433,8 @@ function MessageBubble({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 6,
-        marginBottom: 12,
+        gap: 4,
+        marginBottom: 4,
         animation: "rh-fadeInUp 0.18s ease",
       }}
     >
@@ -468,10 +468,9 @@ function MessageBubble({
         </span>
       </div>
 
-      {/* Content area with hover-reveal copy button */}
+      {/* Content bubble */}
       <div
         style={{
-          position: "relative",
           background: "var(--surface-container-high)",
           border: `1px solid ${message.isError ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.06)"}`,
           borderRadius: "4px 13px 13px 13px",
@@ -479,46 +478,6 @@ function MessageBubble({
           backdropFilter: "blur(10px)",
         }}
       >
-        {/* Copy button — top-right, hover reveal */}
-        {!message.isLoading && !message.isError && message.content && (
-          <button
-            onClick={handleCopy}
-            title={isCopied ? "Copied!" : "Copy response"}
-            style={{
-              position: "absolute",
-              top: 7,
-              right: 7,
-              width: 22,
-              height: 22,
-              borderRadius: 6,
-              border: "1px solid",
-              borderColor: isCopied ? "rgba(16,185,129,0.4)" : "rgba(255,255,255,0.08)",
-              background: isCopied ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.04)",
-              color: isCopied ? "#10b981" : "#475569",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              opacity: isHovered || isCopied ? 1 : 0,
-              transition: "opacity 0.15s, background 0.15s, color 0.15s, border-color 0.15s",
-              zIndex: 2,
-            }}
-            onMouseEnter={(e) => {
-              if (!isCopied) {
-                e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-                e.currentTarget.style.color = "#94a3b8";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isCopied) {
-                e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-                e.currentTarget.style.color = "#475569";
-              }
-            }}
-          >
-            {isCopied ? <Check size={11} /> : <Copy size={11} />}
-          </button>
-        )}
         {message.isLoading && !message.content ? (
           <TypingIndicator />
         ) : message.isError ? (
@@ -562,6 +521,60 @@ function MessageBubble({
         )}
       </div>
 
+      {/* ── Action bar below bubble (Claude / ChatGPT style) ── */}
+      {!message.isLoading && !message.isError && message.content && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            paddingLeft: 2,
+            height: 24,
+            opacity: isHovered || isCopied ? 1 : 0,
+            transition: "opacity 0.15s",
+          }}
+        >
+          <button
+            onClick={handleCopy}
+            title={isCopied ? "Copied!" : "Copy response"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "3px 8px",
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: isCopied
+                ? "rgba(16,185,129,0.35)"
+                : "color-mix(in srgb, var(--on-surface) 12%, transparent)",
+              background: isCopied
+                ? "rgba(16,185,129,0.10)"
+                : "color-mix(in srgb, var(--on-surface) 5%, transparent)",
+              color: isCopied ? "#10b981" : "var(--on-surface-variant)",
+              cursor: "pointer",
+              fontSize: 10,
+              fontWeight: 600,
+              transition: "background 0.15s, color 0.15s, border-color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              if (!isCopied) {
+                e.currentTarget.style.background = "color-mix(in srgb, var(--on-surface) 10%, transparent)";
+                e.currentTarget.style.color = "var(--on-surface)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isCopied) {
+                e.currentTarget.style.background = "color-mix(in srgb, var(--on-surface) 5%, transparent)";
+                e.currentTarget.style.color = "var(--on-surface-variant)";
+              }
+            }}
+          >
+            {isCopied ? <Check size={11} /> : <Copy size={11} />}
+            <span>{isCopied ? "Copied!" : "Copy"}</span>
+          </button>
+        </div>
+      )}
+
       {/* Node highlight pill */}
       {!message.isLoading && message.highlightNodeId && (
         <div style={{ paddingLeft: 2 }}>
@@ -576,6 +589,7 @@ function MessageBubble({
     </div>
   );
 }
+
 
 // ── Main QA Chat Panel ────────────────────────────────────────────────────────
 

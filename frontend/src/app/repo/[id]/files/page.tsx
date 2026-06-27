@@ -78,11 +78,11 @@ function TreeNode({
           transition: "background 0.12s",
           cursor: "default",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "color-mix(in srgb, var(--on-surface) 5%, transparent)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
       >
         <span style={{ color: lc.dot, flexShrink: 0 }}>{getFileIcon(f.language)}</span>
-        <span style={{ fontSize: 12, color: "#cbd5e1", flex: 1, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: 12, color: "var(--on-surface)", flex: 1, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {name}
         </span>
         <span
@@ -100,7 +100,7 @@ function TreeNode({
           {f.language}
         </span>
         {f.chunk_count > 0 && (
-          <span style={{ fontSize: 10, color: "#475569", flexShrink: 0, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 10, color: "var(--on-surface-variant)", flexShrink: 0, whiteSpace: "nowrap" }}>
             {f.chunk_count} chunk{f.chunk_count !== 1 ? "s" : ""}
           </span>
         )}
@@ -124,13 +124,13 @@ function TreeNode({
           cursor: "pointer",
           transition: "background 0.12s",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "color-mix(in srgb, var(--on-surface) 5%, transparent)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
       >
         <ChevronRight
           size={12}
           style={{
-            color: "#475569",
+            color: "var(--on-surface-variant)",
             transition: "transform 0.15s",
             transform: open ? "rotate(90deg)" : "rotate(0deg)",
             flexShrink: 0,
@@ -140,13 +140,13 @@ function TreeNode({
           style={{
             fontSize: 12,
             fontWeight: 600,
-            color: open ? "#e2e8f0" : "#94a3b8",
+            color: open ? "var(--on-surface)" : "var(--on-surface-variant)",
             fontFamily: "monospace",
           }}
         >
           {name}/
         </span>
-        <span style={{ fontSize: 10, color: "#334155", marginLeft: "auto" }}>
+        <span style={{ fontSize: 10, color: "var(--on-surface-variant)", marginLeft: "auto", opacity: 0.5 }}>
           {childKeys.length}
         </span>
       </div>
@@ -385,10 +385,10 @@ export default function SourceFilesPage({ params }: { params: Promise<{ id: stri
       {/* File tree */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px", scrollbarWidth: "thin", scrollbarColor: "rgba(99,102,241,0.2) transparent" }}>
         {filteredFiles.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 20px", color: "#475569" }}>
-            <FileCode2 size={24} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
-            <p style={{ fontSize: 13, fontWeight: 600 }}>No files match</p>
-            <p style={{ fontSize: 11, marginTop: 4 }}>Try a different search or filter</p>
+          <div style={{ textAlign: "center", padding: "40px 20px" }}>
+            <FileCode2 size={24} style={{ margin: "0 auto 8px", opacity: 0.4, color: "var(--on-surface-variant)" }} />
+            <p style={{ fontSize: 13, fontWeight: 600, color: "var(--on-surface)" }}>No files match</p>
+            <p style={{ fontSize: 11, marginTop: 4, color: "var(--on-surface-variant)" }}>Try a different search or filter</p>
           </div>
         ) : (
           treeKeys.map((k) => (
@@ -414,7 +414,7 @@ export default function SourceFilesPage({ params }: { params: Promise<{ id: stri
           { label: "Chunks", val: (data?.files ?? []).reduce((s, f) => s + f.chunk_count, 0) },
         ].map(({ label, val }) => (
           <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#334155" }}>{label}</span>
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--on-surface-variant)", opacity: 0.6 }}>{label}</span>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--on-surface)" }}>{val.toLocaleString()}</span>
           </div>
         ))}
