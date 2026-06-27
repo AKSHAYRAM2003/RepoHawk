@@ -266,3 +266,191 @@ async def delete_repository(
     await db.delete(repo)
     await db.commit()
     return {"status": "success", "message": "Repository completely removed."}
+
+
+@router.get("/{repo_id}/files")
+async def get_repo_files(
+    repo_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the list of source files that were indexed for this repo."""
+    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
+    result = await db.execute(stmt)
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+
+    if repo.analysis_status != "complete":
+        return {"files": [], "total": 0, "status": repo.analysis_status}
+
+    try:
+        from app.core.vector_store import get_chroma_client
+        collection_name = f"repo_{str(repo_id).replace('-', '_')}"
+        client = get_chroma_client()
+
+        try:
+            collection = client.get_collection(name=collection_name)
+        except Exception:
+            return {"files": [], "total": 0, "status": "no_index"}
+
+        # Get all documents with metadata (limit high to capture all)
+        results = collection.get(include=["metadatas"], limit=10000)
+        metadatas = results.get("metadatas") or []
+
+        # Aggregate by file path
+        file_map: dict = {}
+        for meta in metadatas:
+            if not meta:
+                continue
+            # Embedder stores metadata with key "path" (see embedder.py)
+            path = meta.get("path") or meta.get("file_path") or ""
+            lang = meta.get("language") or "unknown"
+            # Skip chunks that failed to embed — they're not real content
+            if meta.get("embed_failed"):
+                continue
+            if not path:
+                continue
+            if path not in file_map:
+                file_map[path] = {"path": path, "language": lang, "chunk_count": 0}
+            file_map[path]["chunk_count"] += 1
+
+        files = sorted(file_map.values(), key=lambda x: x["path"])
+        return {"files": files, "total": len(files), "status": "complete"}
+
+    except Exception as e:
+        return {"files": [], "total": 0, "error": str(e), "status": "error"}
+
+
+@router.get("/{repo_id}/dependencies")
+async def get_repo_dependencies(
+    repo_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Parse and return dependencies from manifest files in the cloned repo."""
+    import json as _json
+    import os
+    import re
+
+    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
+    result = await db.execute(stmt)
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+
+    if repo.analysis_status != "complete":
+        return {"manifests": [], "status": repo.analysis_status}
+
+    from app.agents.nodes.git_cloner import get_clone_path
+    clone_path = get_clone_path(str(repo_id))
+
+    if not os.path.isdir(clone_path):
+        return {"manifests": [], "status": "clone_missing"}
+
+    manifests = []
+
+    # ── package.json (Node.js) ─────────────────────────────────────────────
+    pkg_path = os.path.join(clone_path, "package.json")
+    if os.path.isfile(pkg_path):
+        try:
+            with open(pkg_path, "r", encoding="utf-8", errors="replace") as f:
+                pkg = _json.load(f)
+            deps = []
+            for name, version in (pkg.get("dependencies") or {}).items():
+                deps.append({"name": name, "version": version, "type": "runtime"})
+            for name, version in (pkg.get("devDependencies") or {}).items():
+                deps.append({"name": name, "version": version, "type": "dev"})
+            for name, version in (pkg.get("peerDependencies") or {}).items():
+                deps.append({"name": name, "version": version, "type": "peer"})
+            manifests.append({
+                "file": "package.json",
+                "ecosystem": "npm",
+                "name": pkg.get("name", ""),
+                "version": pkg.get("version", ""),
+                "dependencies": sorted(deps, key=lambda d: (d["type"], d["name"])),
+            })
+        except Exception:
+            pass
+
+    # ── requirements.txt (Python) ──────────────────────────────────────────
+    req_path = os.path.join(clone_path, "requirements.txt")
+    if os.path.isfile(req_path):
+        try:
+            with open(req_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            deps = []
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # parse name==version or name>=version etc.
+                m = re.match(r'^([A-Za-z0-9_\-\.]+)\s*([><=!~^]+.+)?$', line)
+                if m:
+                    deps.append({"name": m.group(1), "version": (m.group(2) or "").strip(), "type": "runtime"})
+            manifests.append({"file": "requirements.txt", "ecosystem": "pip", "dependencies": deps})
+        except Exception:
+            pass
+
+    # ── pyproject.toml (Python) ────────────────────────────────────────────
+    pyproj_path = os.path.join(clone_path, "pyproject.toml")
+    if os.path.isfile(pyproj_path) and not any(m["file"] == "requirements.txt" for m in manifests):
+        try:
+            content = open(pyproj_path, "r", encoding="utf-8", errors="replace").read()
+            # Very simple extraction — look for [tool.poetry.dependencies] or [project] dependencies
+            deps = []
+            in_deps = False
+            for line in content.splitlines():
+                if re.match(r'\[.*dependencies.*\]', line, re.I):
+                    in_deps = True
+                    continue
+                if line.startswith("[") and in_deps:
+                    in_deps = False
+                if in_deps:
+                    m = re.match(r'^([a-zA-Z0-9_\-]+)\s*=\s*"(.+)"', line)
+                    if m and m.group(1) != "python":
+                        deps.append({"name": m.group(1), "version": m.group(2), "type": "runtime"})
+            if deps:
+                manifests.append({"file": "pyproject.toml", "ecosystem": "pip", "dependencies": deps})
+        except Exception:
+            pass
+
+    # ── go.mod (Go) ────────────────────────────────────────────────────────
+    gomod_path = os.path.join(clone_path, "go.mod")
+    if os.path.isfile(gomod_path):
+        try:
+            content = open(gomod_path, "r", encoding="utf-8", errors="replace").read()
+            module = ""
+            deps = []
+            in_require = False
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith("module "):
+                    module = line.split(" ", 1)[1].strip()
+                elif line == "require (":
+                    in_require = True
+                elif line == ")" and in_require:
+                    in_require = False
+                elif in_require or line.startswith("require "):
+                    parts = line.replace("require ", "").split()
+                    if len(parts) >= 2:
+                        indirect = "// indirect" in line
+                        deps.append({
+                            "name": parts[0],
+                            "version": parts[1],
+                            "type": "indirect" if indirect else "runtime"
+                        })
+            manifests.append({
+                "file": "go.mod",
+                "ecosystem": "go",
+                "name": module,
+                "dependencies": sorted(deps, key=lambda d: (d["type"], d["name"])),
+            })
+        except Exception:
+            pass
+
+    return {
+        "manifests": manifests,
+        "total_manifests": len(manifests),
+        "status": "complete" if manifests else "no_manifests_found",
+    }
