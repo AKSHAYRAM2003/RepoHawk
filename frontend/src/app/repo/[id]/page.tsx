@@ -365,7 +365,7 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
 
       {/* Canvas */}
       <div className="flex-1 min-h-0">
-        <DiagramCanvas nodes={diagramNodes} edges={diagramEdges} />
+        <DiagramCanvas nodes={diagramNodes} edges={diagramEdges} repoName={repo?.name ?? undefined} />
       </div>
     </motion.div>
   );

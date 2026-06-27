@@ -11,9 +11,11 @@ import LayeredArchitecture from "./LayeredArchitecture";
 export default function DiagramCanvas({
   nodes,
   edges,
+  repoName,
 }: {
   nodes: DiagramNode[];
   edges: DiagramEdge[];
+  repoName?: string;
 }) {
   // Ensure every node has layer data (fallback to "core-services")
   const normalizedNodes = useMemo(
@@ -28,5 +30,5 @@ export default function DiagramCanvas({
     [nodes]
   );
 
-  return <LayeredArchitecture nodes={normalizedNodes} edges={edges} />;
+  return <LayeredArchitecture nodes={normalizedNodes} edges={edges} repoName={repoName} />;
 }

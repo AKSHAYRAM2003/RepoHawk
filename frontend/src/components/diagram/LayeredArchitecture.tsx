@@ -19,8 +19,9 @@ import "@xyflow/react/dist/style.css";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, X, Layers, ZoomIn, ZoomOut, Maximize2, Minimize2,
-  RotateCcw, Info, Grid3x3,
+  RotateCcw, Info, Grid3x3, Download, Check,
 } from "lucide-react";
+import { toPng } from "html-to-image";
 import AwsArchNode from "./AwsArchNode";
 import AwsFlowEdge from "./AwsFlowEdge";
 import MetadataPanel from "./MetadataPanel";
@@ -428,7 +429,17 @@ function DiagramLegend() {
 }
 
 // ── Custom Controls ───────────────────────────────────────────────────────────
-function DiagramControls({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
+function DiagramControls({
+  containerRef,
+  onExport,
+  isExporting,
+  exported,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  onExport: () => void;
+  isExporting: boolean;
+  exported: boolean;
+}) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -448,8 +459,6 @@ function DiagramControls({ containerRef }: { containerRef: React.RefObject<HTMLD
     background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer",
     borderRadius: 7, transition: "background 0.15s, color 0.15s",
   };
-  const hE = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#f1f5f9"; };
-  const hL = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; };
 
   const controls = [
     { icon: <ZoomIn size={14} />,     title: "Zoom in",        action: () => zoomIn({ duration: 200 }) },
@@ -461,8 +470,30 @@ function DiagramControls({ containerRef }: { containerRef: React.RefObject<HTMLD
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, background: "rgba(10,11,20,0.92)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: 4, backdropFilter: "blur(12px)", boxShadow: "0 4px 20px rgba(0,0,0,0.5)" }}>
       {controls.map((c, i) => (
-        <button key={i} title={c.title} style={btn} onClick={c.action} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "white"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>{c.icon}</button>
+        <button key={i} title={c.title} style={btn} onClick={c.action}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "white"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+        >{c.icon}</button>
       ))}
+      {/* Divider */}
+      <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "2px 4px" }} />
+      {/* Export PNG */}
+      <button
+        title={exported ? "Exported!" : isExporting ? "Exporting…" : "Export as PNG"}
+        onClick={onExport}
+        disabled={isExporting}
+        style={{
+          ...btn,
+          color: exported ? "#10b981" : isExporting ? "#6366f1" : "#94a3b8",
+          opacity: isExporting ? 0.7 : 1,
+        }}
+        onMouseEnter={(e) => { if (!isExporting) { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = exported ? "#10b981" : "white"; } }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = exported ? "#10b981" : isExporting ? "#6366f1" : "rgba(255,255,255,0.6)"; }}
+      >
+        {exported ? <Check size={13} /> : isExporting
+          ? <div style={{ width: 13, height: 13, border: "2px solid #6366f1", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+          : <Download size={13} />}
+      </button>
     </div>
   );
 }
@@ -488,15 +519,49 @@ function DiagramSearch({ query, onChange, onClear }: { query: string; onChange: 
 }
 
 // ── Inner canvas ──────────────────────────────────────────────────────────────
-function DiagramInner({ rawNodes, rawEdges, containerRef }: {
+function DiagramInner({ rawNodes, rawEdges, containerRef, repoName }: {
   rawNodes: DiagramNode[];
   rawEdges: DiagramEdge[];
   containerRef: React.RefObject<HTMLDivElement | null>;
+  repoName?: string;
 }) {
   const [selectedNode, setSelectedNode] = useState<{ id: string; data: ArchNodeData } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exported, setExported] = useState(false);
+  const reactFlowWrapperRef = useRef<HTMLDivElement>(null);
   const { fitView } = useReactFlow();
+
+  // ── PNG Export ─────────────────────────────────────────────────────────────
+  const handleExport = useCallback(async () => {
+    const el = reactFlowWrapperRef.current;
+    if (!el || isExporting) return;
+    setIsExporting(true);
+    try {
+      // Temporarily hide the minimap and panels for a clean export
+      const dataUrl = await toPng(el, {
+        backgroundColor: "#080a12",
+        pixelRatio: 2,
+        filter: (node) => {
+          // Keep everything except the react-flow__panel elements (controls/search overlays)
+          if (node.classList?.contains("react-flow__panel")) return false;
+          if (node.classList?.contains("react-flow__minimap")) return false;
+          return true;
+        },
+      });
+      const link = document.createElement("a");
+      link.download = `repohawk-${repoName ?? "diagram"}-architecture.png`;
+      link.href = dataUrl;
+      link.click();
+      setExported(true);
+      setTimeout(() => setExported(false), 2000);
+    } catch (err) {
+      console.error("Export failed:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isExporting, repoName]);
 
   const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
     () => buildLayout(rawNodes, rawEdges),
@@ -543,9 +608,21 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
   }, [displayNodes, setNodesState]);
 
   const onNodeClick = useCallback((_: any, node: any) => {
-    if (node.type === "archNode") setSelectedNode({ id: node.id, data: node.data as ArchNodeData });
+    if (node.type === "archNode") {
+      const nd = { id: node.id, data: node.data as ArchNodeData };
+      setSelectedNode(nd);
+      // Notify PropertiesPanel in the right sidebar
+      window.dispatchEvent(
+        new CustomEvent("repohawk-node-selected", { detail: { node: nd } })
+      );
+    }
   }, []);
-  const onPaneClick = useCallback(() => setSelectedNode(null), []);
+  const onPaneClick = useCallback(() => {
+    setSelectedNode(null);
+    window.dispatchEvent(
+      new CustomEvent("repohawk-node-selected", { detail: { node: null } })
+    );
+  }, []);
 
   // ── QA Chat highlight integration (commit 8) ────────────────────────────────
   // Listens for 'repohawk-highlight-node' dispatched by the chat panel.
@@ -614,7 +691,7 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
 
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", background: "#080a12", overflow: "hidden" }}>
-      <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+      <div ref={reactFlowWrapperRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
         <ReactFlow
           nodes={nodesState}
           edges={edgesState}
@@ -674,7 +751,12 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
 
           <Panel position="bottom-right">
             <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
-              <DiagramControls containerRef={containerRef} />
+              <DiagramControls
+                containerRef={containerRef}
+                onExport={handleExport}
+                isExporting={isExporting}
+                exported={exported}
+              />
             </div>
           </Panel>
 
@@ -700,15 +782,16 @@ function DiagramInner({ rawNodes, rawEdges, containerRef }: {
 }
 
 // ── Root export ───────────────────────────────────────────────────────────────
-export default function LayeredArchitecture({ nodes: rawNodes, edges: rawEdges }: {
+export default function LayeredArchitecture({ nodes: rawNodes, edges: rawEdges, repoName }: {
   nodes: DiagramNode[];
   edges: DiagramEdge[];
+  repoName?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   return (
     <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
       <ReactFlowProvider>
-        <DiagramInner rawNodes={rawNodes} rawEdges={rawEdges} containerRef={containerRef} />
+        <DiagramInner rawNodes={rawNodes} rawEdges={rawEdges} containerRef={containerRef} repoName={repoName} />
       </ReactFlowProvider>
     </div>
   );
