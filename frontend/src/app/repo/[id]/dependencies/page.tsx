@@ -40,13 +40,13 @@ function DepRow({ dep, ecosystem }: { dep: Dep; ecosystem: string }) {
         alignItems: "center",
         gap: 10,
         padding: "7px 14px",
-        borderBottom: "1px solid rgba(255,255,255,0.03)",
+        borderBottom: "1px solid color-mix(in srgb, var(--on-surface) 5%, transparent)",
         transition: "background 0.1s",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "color-mix(in srgb, var(--on-surface) 4%, transparent)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
-      <Package size={12} style={{ color: "#475569", flexShrink: 0 }} />
+      <Package size={12} style={{ color: "var(--on-surface-variant)", flexShrink: 0 }} />
 
       <span
         style={{
@@ -54,7 +54,7 @@ function DepRow({ dep, ecosystem }: { dep: Dep; ecosystem: string }) {
           fontSize: 12,
           fontWeight: 600,
           fontFamily: "monospace",
-          color: "#e2e8f0",
+          color: "var(--on-surface)",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
@@ -68,9 +68,9 @@ function DepRow({ dep, ecosystem }: { dep: Dep; ecosystem: string }) {
           style={{
             fontSize: 10,
             fontFamily: "monospace",
-            color: "#64748b",
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.05)",
+            color: "var(--on-surface-variant)",
+            background: "color-mix(in srgb, var(--on-surface) 6%, transparent)",
+            border: "1px solid var(--outline-variant)",
             borderRadius: 5,
             padding: "1px 6px",
             flexShrink: 0,
@@ -102,10 +102,10 @@ function DepRow({ dep, ecosystem }: { dep: Dep; ecosystem: string }) {
           target="_blank"
           rel="noopener noreferrer"
           title={`View on ${ecoMeta.label}`}
-          style={{ color: "#334155", flexShrink: 0, display: "flex", alignItems: "center" }}
+          style={{ color: "var(--on-surface-variant)", opacity: 0.4, flexShrink: 0, display: "flex", alignItems: "center" }}
           onClick={(e) => e.stopPropagation()}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#94a3b8")}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#334155")}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = "1"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--on-surface)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = "0.4"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--on-surface-variant)"; }}
         >
           <ExternalLink size={11} />
         </a>
@@ -137,11 +137,11 @@ function ManifestSection({ manifest, search }: { manifest: Manifest; search: str
   return (
     <div
       style={{
-        border: "1px solid rgba(255,255,255,0.06)",
+        border: "1px solid var(--outline-variant)",
         borderRadius: 14,
         overflow: "hidden",
         marginBottom: 16,
-        background: "rgba(255,255,255,0.01)",
+        background: "color-mix(in srgb, var(--on-surface) 2%, transparent)",
       }}
     >
       {/* Section header */}
@@ -153,9 +153,9 @@ function ManifestSection({ manifest, search }: { manifest: Manifest; search: str
           alignItems: "center",
           gap: 12,
           padding: "12px 16px",
-          background: "rgba(255,255,255,0.03)",
+          background: "color-mix(in srgb, var(--on-surface) 3%, transparent)",
           border: "none",
-          borderBottom: open ? "1px solid rgba(255,255,255,0.06)" : "none",
+          borderBottom: open ? "1px solid var(--outline-variant)" : "none",
           cursor: "pointer",
           textAlign: "left",
         }}
@@ -176,11 +176,11 @@ function ManifestSection({ manifest, search }: { manifest: Manifest; search: str
         </div>
 
         <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", fontFamily: "monospace" }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "var(--on-surface)", fontFamily: "monospace" }}>
             {manifest.file}
           </p>
           {manifest.name && (
-            <p style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>
+            <p style={{ fontSize: 11, color: "var(--on-surface-variant)", marginTop: 1 }}>
               {manifest.name} {manifest.version ? `v${manifest.version}` : ""}
             </p>
           )}
@@ -207,7 +207,7 @@ function ManifestSection({ manifest, search }: { manifest: Manifest; search: str
           })}
         </div>
 
-        <span style={{ fontSize: 10, color: "#334155", marginLeft: 4 }}>
+        <span style={{ fontSize: 10, color: "var(--on-surface-variant)", marginLeft: 4, opacity: 0.5 }}>
           {open ? "▲" : "▼"}
         </span>
       </button>
@@ -216,7 +216,7 @@ function ManifestSection({ manifest, search }: { manifest: Manifest; search: str
       {open && (
         <div>
           {filteredDeps.length === 0 ? (
-            <p style={{ padding: "16px", fontSize: 12, color: "#334155", textAlign: "center" }}>
+            <p style={{ padding: "16px", fontSize: 12, color: "var(--on-surface-variant)", textAlign: "center" }}>
               No dependencies match your search.
             </p>
           ) : (

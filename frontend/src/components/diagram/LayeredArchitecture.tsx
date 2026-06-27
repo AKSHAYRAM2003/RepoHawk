@@ -545,12 +545,16 @@ function DiagramInner({ rawNodes, rawEdges, containerRef, repoName }: {
       await new Promise((r) => setTimeout(r, 350));
 
       // Step 3: capture at 4× device pixel ratio for crisp output
+      // skipFonts: true — prevents SecurityError from cross-origin stylesheets
+      // (html-to-image tries to read cssRules from fonts.googleapis.com which
+      //  is blocked by CORS; skipping fonts avoids this entirely since the
+      //  browser has already downloaded and rendered the fonts anyway)
       const dataUrl = await toPng(el, {
         backgroundColor: "#080a12",
-        pixelRatio: 4,          // 4× = ~300 DPI quality; stays sharp when zoomed
-        cacheBust: true,        // avoid stale cached images
+        pixelRatio: 4,
+        skipFonts: true,
+        cacheBust: true,
         filter: (node) => {
-          // Strip UI chrome — controls, minimap, search bar
           if (node.classList?.contains("react-flow__panel")) return false;
           if (node.classList?.contains("react-flow__minimap")) return false;
           if (node.classList?.contains("react-flow__controls")) return false;
