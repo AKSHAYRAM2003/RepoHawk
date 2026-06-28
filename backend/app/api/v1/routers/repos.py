@@ -454,3 +454,158 @@ async def get_repo_dependencies(
         "total_manifests": len(manifests),
         "status": "complete" if manifests else "no_manifests_found",
     }
+
+
+@router.get("/{repo_id}/generate-readme")
+async def generate_readme(
+    repo_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Stream a generated README.md for the given repository.
+    
+    Uses the architecture diagram + top code samples from ChromaDB as context,
+    then prompts the LLM to produce a comprehensive open-source README.
+    """
+    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
+    result = await db.execute(stmt)
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+
+    if repo.analysis_status != "complete":
+        raise HTTPException(status_code=400, detail="Repository analysis is not complete yet.")
+
+    # ── Collect architecture context ───────────────────────────────────────────
+    diag_stmt = select(Diagram).where(
+        Diagram.repo_id == repo_id,
+        Diagram.user_id == current_user.id,
+    )
+    diag_result = await db.execute(diag_stmt)
+    diagram = diag_result.scalars().first()
+
+    arch_summary = ""
+    if diagram and diagram.reactflow_json:
+        try:
+            nodes = diagram.reactflow_json.get("nodes", [])
+            arch_lines = []
+            for node in nodes[:30]:  # limit to first 30 nodes
+                data = node.get("data", {})
+                label = data.get("label", "")
+                ntype = data.get("type", "")
+                desc = data.get("description", "")
+                tech = data.get("tech", "")
+                layer = data.get("layer", "")
+                if label:
+                    line = f"- **{label}** ({ntype}, layer: {layer})"
+                    if tech:
+                        line += f" — Tech: `{tech}`"
+                    if desc:
+                        line += f". {desc}"
+                    arch_lines.append(line)
+            arch_summary = "\n".join(arch_lines)
+        except Exception:
+            arch_summary = ""
+
+    # ── Collect code samples from ChromaDB ────────────────────────────────────
+    code_context = ""
+    try:
+        from app.core.vector_store import get_chroma_client
+        collection_name = f"repo_{str(repo_id).replace('-', '_')}"
+        client = get_chroma_client()
+        try:
+            collection = client.get_collection(name=collection_name)
+            # Get a representative sample of code chunks
+            sample = collection.get(limit=20, include=["documents", "metadatas"])
+            docs = sample.get("documents") or []
+            metas = sample.get("metadatas") or []
+            code_snippets = []
+            seen_paths = set()
+            for doc, meta in zip(docs, metas):
+                if not doc or not meta:
+                    continue
+                path = meta.get("path", meta.get("file_path", ""))
+                if path in seen_paths:
+                    continue
+                seen_paths.add(path)
+                snippet = doc[:400].replace("\n", "\n  ")
+                code_snippets.append(f"### `{path}`\n```\n  {snippet}\n```")
+            code_context = "\n\n".join(code_snippets[:10])
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # ── Build the README generation prompt ───────────────────────────────────
+    system_prompt = """You are an expert technical writer and open-source maintainer.
+Your task is to generate a comprehensive, well-structured README.md file for a GitHub repository.
+The README must be professional, visually appealing in markdown, and follow open-source best practices.
+
+## README Structure Requirements:
+1. Project title with badges placeholder (build status, license, version)
+2. One-line tagline / description
+3. Table of Contents
+4. Key Features (bullet list with ✓ or emoji icons)
+5. Architecture Overview (a text description of the system based on the diagram info provided)
+6. Tech Stack (table format: Layer | Technology)
+7. Getting Started (Prerequisites, Installation steps, Environment Variables)
+8. Usage / Quick Start with code examples
+9. Project Structure (directory tree if you can infer it)
+10. Contributing section
+11. License section
+
+## Rules:
+- Use markdown formatting throughout (headers, tables, code blocks, badges)
+- Be specific about technologies you observe in the context
+- If you don't have enough information for a section, write a sensible placeholder with [TODO] markers
+- Do NOT repeat the same information in multiple sections
+- Output ONLY the README markdown content — no preamble or explanation
+"""
+
+    user_prompt = f"""Generate a README.md for the repository: **{repo.name}** (by {repo.owner})
+GitHub URL: {repo.github_url}
+
+## Architecture Components:
+{arch_summary or "(No architecture data available)"}
+
+## Code Samples:
+{code_context or "(No code samples available)"}
+
+Generate the full README.md now:"""
+
+    # ── Stream the LLM response ────────────────────────────────────────────────
+    async def event_generator():
+        try:
+            from app.core.llm import get_llm
+            from app.core.config import settings
+            from langchain_core.messages import SystemMessage, HumanMessage
+
+            llm = get_llm(model=settings.MODEL_CHAT, temperature=0.3, timeout=120.0)
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+
+            # Stream tokens
+            async for chunk in llm.astream(messages):
+                if await request.is_disconnected():
+                    break
+                token = getattr(chunk, "content", "") or ""
+                if token:
+                    yield {
+                        "event": "token",
+                        "data": json.dumps({"token": token}),
+                    }
+
+            yield {
+                "event": "done",
+                "data": json.dumps({"status": "complete"}),
+            }
+        except Exception as e:
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": str(e)}),
+            }
+
+    return EventSourceResponse(event_generator())

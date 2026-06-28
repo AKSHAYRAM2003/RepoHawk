@@ -24,10 +24,12 @@ import {
   Camera,
   Settings2,
   Bell,
-  Shield
+  Shield,
+  FileText
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
+import ReadmeGeneratorModal from "./ReadmeGeneratorModal";
 
 
 interface RepoSidebarProps {
@@ -62,6 +64,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isReadmeModalOpen, setIsReadmeModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
   const { resolvedTheme, theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
@@ -101,6 +104,11 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         { name: "Source Files", href: activeRepoId ? `/repo/${activeRepoId}/files` : undefined, icon: FileCode2 },
         { name: "Dependencies", href: activeRepoId ? `/repo/${activeRepoId}/dependencies` : undefined, icon: PackageCheck },
         { name: "Pipeline Logs", href: activeRepoId ? `/repo/${activeRepoId}/logs` : undefined, icon: TerminalSquare }
+      ]
+    },
+    {
+      section: "AI Tools", items: [
+        { name: "Generate README", href: "#", icon: FileText, action: activeRepoId ? "generate-readme" : undefined }
       ]
     }
   ];
@@ -252,9 +260,34 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                   return (
                     <li key={iIdx}>
                       {item.action ? (
-                        <button className={`w-full flex items-center ${isCollapsed ? "justify-center px-0" : "px-3"} py-2 rounded-xl text-sm font-medium transition-colors hover-surface text-on-surface-variant`}>
+                        <button
+                          onClick={() => {
+                            if (item.action === "generate-readme") {
+                              setIsReadmeModalOpen(true);
+                            }
+                          }}
+                          className={`w-full flex items-center ${isCollapsed ? "justify-center px-0" : "px-3"} py-2 rounded-xl text-sm font-medium transition-colors hover-surface text-on-surface-variant`}
+                        >
                           <Icon size={17} className="flex-shrink-0" />
                           {!isCollapsed && <span className="ml-3 truncate">{item.name}</span>}
+                          {!isCollapsed && item.action === "generate-readme" && (
+                            <span
+                              style={{
+                                marginLeft: "auto",
+                                fontSize: 8,
+                                fontWeight: 800,
+                                letterSpacing: "0.08em",
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                background: "rgba(99,102,241,0.12)",
+                                color: "#818cf8",
+                                border: "1px solid rgba(99,102,241,0.25)",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              AI
+                            </span>
+                          )}
                         </button>
                       ) : (
                         <Link href={item.href || "#"}>
@@ -577,6 +610,16 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         </div>
       )}
 
+      {/* README Generator Modal */}
+      {isReadmeModalOpen && activeRepoId && (
+        <ReadmeGeneratorModal
+          repoId={activeRepoId}
+          repoName={activeRepoId}
+          onClose={() => setIsReadmeModalOpen(false)}
+        />
+      )}
+
     </aside>
   );
 }
+
