@@ -1,8 +1,9 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { ArchNodeData } from "@/hooks/useDiagram";
+import { Zap } from "lucide-react";
 
 const TYPE_THEME: Record<
   string,
@@ -19,9 +20,10 @@ const TYPE_THEME: Record<
 
 const FALLBACK = TYPE_THEME.service;
 
-export default memo(function AwsArchNode({ data, selected }: NodeProps & { data: ArchNodeData }) {
+export default memo(function AwsArchNode({ id, data, selected }: NodeProps & { data: ArchNodeData }) {
   const d = data as ArchNodeData;
   const t = TYPE_THEME[d.type ?? ""] ?? FALLBACK;
+  const [isHovered, setIsHovered] = useState(false);
 
   const handleStyle: React.CSSProperties = {
     background: t.dot,
@@ -31,8 +33,21 @@ export default memo(function AwsArchNode({ data, selected }: NodeProps & { data:
     borderRadius: "50%",
   };
 
+  const handleAskAI = (e: React.MouseEvent) => {
+    // Stop the click from propagating to ReactFlow's node selection
+    e.stopPropagation();
+    const question = `Explain the "${d.label}" component — what does it do, how does it connect to other parts of the system, and what files make it up?`;
+    window.dispatchEvent(
+      new CustomEvent("repohawk-ask-ai-about-node", {
+        detail: { nodeId: id, nodeLabel: d.label, question },
+      })
+    );
+  };
+
   return (
     <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={{
         width: 224,
         height: 112,
@@ -44,7 +59,9 @@ export default memo(function AwsArchNode({ data, selected }: NodeProps & { data:
         borderRadius: 14,
         boxShadow: selected
           ? `0 0 0 2.5px rgba(129,140,248,0.28), 0 8px 32px rgba(0,0,0,0.7)`
-          : `0 2px 14px rgba(0,0,0,0.55)`,
+          : isHovered
+            ? `0 0 0 1.5px rgba(99,102,241,0.35), 0 8px 32px rgba(0,0,0,0.7)`
+            : `0 2px 14px rgba(0,0,0,0.55)`,
         position: "relative",
         cursor: "pointer",
         transition: "box-shadow 0.15s, border-color 0.15s",
@@ -189,6 +206,39 @@ export default memo(function AwsArchNode({ data, selected }: NodeProps & { data:
           )}
         </div>
       </div>
+
+      {/* Ask AI hover button — appears on hover in top-right corner */}
+      <button
+        onClick={handleAskAI}
+        title={`Ask AI about ${d.label}`}
+        style={{
+          position: "absolute",
+          top: 7,
+          right: 7,
+          display: "flex",
+          alignItems: "center",
+          gap: 3,
+          padding: "3px 7px",
+          borderRadius: 6,
+          border: "1px solid rgba(99,102,241,0.45)",
+          background: "rgba(99,102,241,0.15)",
+          color: "#818cf8",
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: "0.04em",
+          cursor: "pointer",
+          opacity: isHovered ? 1 : 0,
+          transform: isHovered ? "translateY(0) scale(1)" : "translateY(-3px) scale(0.92)",
+          transition: "opacity 0.15s, transform 0.15s",
+          backdropFilter: "blur(4px)",
+          whiteSpace: "nowrap",
+          pointerEvents: isHovered ? "auto" : "none",
+          zIndex: 10,
+        }}
+      >
+        <Zap size={9} />
+        Ask AI
+      </button>
     </div>
   );
 });

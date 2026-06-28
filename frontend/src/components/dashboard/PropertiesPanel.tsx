@@ -233,6 +233,19 @@ export default function PropertiesPanel({ repoId, validNodeIds = [] }: Propertie
     return () => window.removeEventListener("repohawk-node-selected", handleNodeSelect);
   }, [isCollapsed]);
 
+  // Listen for "Ask AI about this node" button clicks from diagram nodes
+  useEffect(() => {
+    const handleAskAIAboutNode = (e: Event) => {
+      const { question } = (e as CustomEvent<{ nodeId: string; nodeLabel: string; question: string }>).detail;
+      if (!question) return;
+      setPendingAiQuestion(question);
+      setActiveTab("qa");
+      if (isCollapsed) setIsCollapsed(false);
+    };
+    window.addEventListener("repohawk-ask-ai-about-node", handleAskAIAboutNode);
+    return () => window.removeEventListener("repohawk-ask-ai-about-node", handleAskAIAboutNode);
+  }, [isCollapsed]);
+
   const handleAskAI = useCallback((question: string) => {
     setPendingAiQuestion(question);
     setActiveTab("qa");
