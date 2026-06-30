@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { PackageCheck, RefreshCw, AlertCircle, Search, X, Package, ExternalLink } from "lucide-react";
+import DependencyCanvas from "@/components/dashboard/DependencyCanvas";
 
 interface Dep {
   name: string;
@@ -236,6 +237,7 @@ export default function DependenciesPage({ params }: { params: Promise<{ id: str
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
 
   useEffect(() => {
     setLoading(true);
@@ -333,6 +335,52 @@ export default function DependenciesPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
 
+        {/* View toggle & Search */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, justifyContent: "flex-end" }}>
+          {/* Segmented control for List / Graph */}
+          <div
+            style={{
+              display: "flex",
+              background: "color-mix(in srgb, var(--on-surface) 6%, transparent)",
+              padding: 3,
+              borderRadius: 8,
+              gap: 2,
+            }}
+          >
+            <button
+              onClick={() => setViewMode("list")}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                border: "none",
+                background: viewMode === "list" ? "var(--surface)" : "transparent",
+                color: viewMode === "list" ? "var(--on-surface)" : "var(--on-surface-variant)",
+                transition: "all 0.12s",
+              }}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setViewMode("graph")}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                border: "none",
+                background: viewMode === "graph" ? "var(--surface)" : "transparent",
+                color: viewMode === "graph" ? "var(--on-surface)" : "var(--on-surface-variant)",
+                transition: "all 0.12s",
+              }}
+            >
+              Graph
+            </button>
+          </div>
+
         <div style={{ position: "relative", flex: 1, maxWidth: 280 }}>
           <Search
             size={12}
@@ -367,14 +415,25 @@ export default function DependenciesPage({ params }: { params: Promise<{ id: str
             </button>
           )}
         </div>
+        </div>
       </div>
 
-      {/* Manifests */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px", scrollbarWidth: "thin", scrollbarColor: "rgba(16,185,129,0.2) transparent" }}>
-        {(data?.manifests ?? []).map((manifest) => (
-          <ManifestSection key={manifest.file} manifest={manifest} search={search} />
-        ))}
-      </div>
+      {/* Manifests List or Graph */}
+      {viewMode === "graph" ? (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <DependencyCanvas
+            manifests={data?.manifests || []}
+            search={search}
+            repoId={id}
+          />
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px", scrollbarWidth: "thin", scrollbarColor: "rgba(16,185,129,0.2) transparent" }}>
+          {(data?.manifests ?? []).map((manifest) => (
+            <ManifestSection key={manifest.file} manifest={manifest} search={search} />
+          ))}
+        </div>
+      )}
 
       {/* Footer */}
       <div
