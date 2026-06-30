@@ -30,6 +30,7 @@ import {
 import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import ReadmeGeneratorModal from "./ReadmeGeneratorModal";
+import SearchModal from "./SearchModal";
 
 
 interface RepoSidebarProps {
@@ -65,9 +66,22 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isReadmeModalOpen, setIsReadmeModalOpen] = useState(false);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
   const { resolvedTheme, theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
+
+  // Listen for global Cmd+K / Ctrl+K keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsSearchModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Sync or retrieve last active repository ID from local storage
   useEffect(() => {
@@ -264,12 +278,32 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                           onClick={() => {
                             if (item.action === "generate-readme") {
                               setIsReadmeModalOpen(true);
+                            } else if (item.action === "cmd-k") {
+                              setIsSearchModalOpen(true);
                             }
                           }}
                           className={`w-full flex items-center ${isCollapsed ? "justify-center px-0" : "px-3"} py-2 rounded-xl text-sm font-medium transition-colors hover-surface text-on-surface-variant`}
                         >
                           <Icon size={17} className="flex-shrink-0" />
                           {!isCollapsed && <span className="ml-3 truncate">{item.name}</span>}
+                          {!isCollapsed && item.action === "cmd-k" && (
+                            <span
+                              style={{
+                                marginLeft: "auto",
+                                fontSize: 8,
+                                fontWeight: 800,
+                                letterSpacing: "0.08em",
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                background: "rgba(255,255,255,0.06)",
+                                border: "1px solid rgba(255,255,255,0.1)",
+                                color: "var(--on-surface-variant)",
+                                opacity: 0.8,
+                              }}
+                            >
+                              ⌘K
+                            </span>
+                          )}
                           {!isCollapsed && item.action === "generate-readme" && (
                             <span
                               style={{
@@ -616,6 +650,14 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
           repoId={activeRepoId}
           repoName={activeRepoId}
           onClose={() => setIsReadmeModalOpen(false)}
+        />
+      )}
+
+      {/* Semantic Search Modal */}
+      {isSearchModalOpen && activeRepoId && (
+        <SearchModal
+          repoId={activeRepoId}
+          onClose={() => setIsSearchModalOpen(false)}
         />
       )}
 

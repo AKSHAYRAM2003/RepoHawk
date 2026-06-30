@@ -609,3 +609,62 @@ Generate the full README.md now:"""
             }
 
     return EventSourceResponse(event_generator())
+
+
+@router.get("/{repo_id}/search")
+async def search_repository(
+    repo_id: uuid.UUID,
+    q: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Perform a semantic search over the repository's code files using ChromaDB embeddings."""
+    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
+    result = await db.execute(stmt)
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+
+    if repo.analysis_status != "complete":
+        raise HTTPException(status_code=400, detail="Repository analysis is not complete yet.")
+
+    try:
+        from app.core.vector_store import get_chroma_client
+        from app.core.embeddings import get_embeddings
+
+        collection_name = f"repo_{str(repo_id).replace('-', '_')}"
+        client = get_chroma_client()
+        collection = client.get_collection(name=collection_name)
+
+        embeddings_model = get_embeddings()
+        query_vector = embeddings_model.embed_query(q)
+
+        results = collection.query(
+            query_embeddings=[query_vector],
+            n_results=8,
+            include=["documents", "metadatas", "distances"]
+        )
+
+        formatted = []
+        if results and "documents" in results and results["documents"]:
+            docs = results["documents"][0]
+            metas = results["metadatas"][0]
+            distances = results["distances"][0] if "distances" in results else [0.0] * len(docs)
+
+            for doc, meta, dist in zip(docs, metas, distances):
+                score = max(0.0, min(1.0, 1.0 - (dist / 2.0))) # Cosine distance -> similarity score
+                formatted.append({
+                    "file_path": meta.get("path", meta.get("file_path", "unknown")),
+                    "content": doc,
+                    "line_start": meta.get("line_start", 1),
+                    "line_end": meta.get("line_end", 1),
+                    "score": round(score, 3)
+                })
+
+        # Sort by similarity score descending
+        formatted.sort(key=lambda x: x["score"], reverse=True)
+        return {"results": formatted}
+    except Exception as e:
+        logger.error(f"Error performing semantic search: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
