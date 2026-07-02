@@ -33,7 +33,14 @@ class Settings(BaseSettings):
     RESEND_PASSWORD_RESET_TEMPLATE_ID: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
     
+    # GitHub App
+    GITHUB_APP_ID: str = ""
+    GITHUB_WEBHOOK_SECRET: str = ""
+    GITHUB_PRIVATE_KEY_PATH: str = ""
+    
     class Config:
         env_file = ".env"
+        extra = "ignore"
+
 
 settings = Settings()
