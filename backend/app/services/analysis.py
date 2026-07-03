@@ -6,7 +6,7 @@ Handles the execution of the agentic analysis pipeline and database persistence.
 import uuid
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models.repo import Repo
@@ -85,7 +85,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
             try:
                 # Enforce a maximum duration per pipeline step so the
                 # analysis can't hang indefinitely if an LLM call stalls.
-                step_timeout = 300  # seconds per step
+                step_timeout = 300  # seconds per step (5 minutes)
                 ait = analysis_graph.astream(initial_state).__aiter__()
                 while True:
                     try:
@@ -156,7 +156,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
 
                 # 4. Update Repo
                 repo.analysis_status = "complete"
-                repo.last_analyzed_at = datetime.utcnow()
+                repo.last_analyzed_at = datetime.now(timezone.utc)
                 repo.file_count = final_state.get("total_files", 0)
                 
                 await db.commit()
@@ -177,7 +177,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 repo.analysis_status = "failed"
                 timeout_event = {
                     "step": "pipeline_error",
-                    "log": "⏰ Analysis timed out after 10 minutes. Try analyzing a smaller repository.",
+                    "log": "⏰ Analysis timed out (a single step exceeded 5 minutes). Try analyzing a smaller repository.",
                     "status": "failed"
                 }
                 current_logs = list(repo.logs or [])

@@ -142,11 +142,11 @@ async def append_message(
     
     # Update session's updated_at timestamp
     from sqlalchemy import update
-    from datetime import datetime
+    from datetime import datetime, timezone
     await db.execute(
         update(ChatSession)
         .where(ChatSession.id == sid)
-        .values(updated_at=datetime.utcnow())
+        .values(updated_at=datetime.now(timezone.utc))
     )
     
     await db.commit()

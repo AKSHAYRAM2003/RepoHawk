@@ -245,26 +245,15 @@ def qa_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     try:
-        # ── 1. Query rewriting (sync wrapper around async helper) ─────────────
+        # ── 1. Query rewriting ──────────────────────────────────
+        # NOTE: This synchronous node runs inside FastAPI's already-running event
+        # loop, so we cannot safely drive the async `rewrite_query` coroutine here
+        # (run_until_complete would raise on a running loop). The streaming path
+        # `astream_qa_answer` performs query rewriting properly via `await`.
+        # For this sync fallback path we use the original question directly.
         rewritten_question = question
-        try:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # LangGraph may invoke nodes synchronously inside an async loop;
-                    # fall back to original question for safety.
-                    rewritten_question = question
-                else:
-                    rewritten_question = loop.run_until_complete(
-                        rewrite_query(question, chat_history)
-                    )
-            except RuntimeError:
-                rewritten_question = question
-        except Exception:
-            rewritten_question = question
 
-        # ── 2. Embed the (rewritten) question ─────────────────────────────────
+        # ── 2. Embed the question ─────────────────────────────────────────
         embeddings_client = get_embeddings()
         try:
             query_vector = embeddings_client.embed_query(rewritten_question)

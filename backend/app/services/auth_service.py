@@ -1,7 +1,7 @@
 from typing import Optional
 import uuid
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.user import User, PasswordResetToken
@@ -36,7 +36,7 @@ async def create_password_reset_token(db: AsyncSession, user_id: uuid.UUID) -> s
     reset = PasswordResetToken(
         user_id=user_id,
         token=token,
-        expires_at=datetime.utcnow() + timedelta(hours=1),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
     db.add(reset)
     await db.commit()
@@ -48,7 +48,7 @@ async def verify_reset_token(db: AsyncSession, token: str) -> Optional[User]:
         select(PasswordResetToken).where(
             PasswordResetToken.token == token,
             PasswordResetToken.used == False,
-            PasswordResetToken.expires_at > datetime.utcnow(),
+            PasswordResetToken.expires_at > datetime.now(timezone.utc),
         )
     )
     reset = result.scalar_one_or_none()
@@ -63,7 +63,7 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> boo
         select(PasswordResetToken).where(
             PasswordResetToken.token == token,
             PasswordResetToken.used == False,
-            PasswordResetToken.expires_at > datetime.utcnow(),
+            PasswordResetToken.expires_at > datetime.now(timezone.utc),
         )
     )
     reset = result.scalar_one_or_none()
