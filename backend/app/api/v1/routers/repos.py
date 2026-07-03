@@ -15,6 +15,9 @@ import uuid
 from typing import List, Optional
 import asyncio
 import json
+import logging
+
+logger = logging.getLogger("repohawk.repos")
 
 router = APIRouter(prefix="/repos", tags=["Repositories"])
 
@@ -204,11 +207,28 @@ async def retry_repo_analysis(
     if repo.analysis_status in ["queued", "running"]:
         raise HTTPException(status_code=400, detail="Analysis is already running")
 
+    # ── Pre-retry cleanup: remove stale artifacts so the pipeline starts clean ──
+    # 1. Remove previous git clone (if still present)
+    try:
+        from app.agents.nodes.git_cloner import cleanup_clone
+        cleanup_clone(str(repo_id))
+    except Exception:
+        pass
+
+    # 2. Drop stale ChromaDB collection (embedder will recreate it)
+    try:
+        from app.core.vector_store import get_chroma_client
+        collection_name = f"repo_{str(repo_id).replace('-', '_')}"
+        client = get_chroma_client()
+        client.delete_collection(name=collection_name)
+    except Exception:
+        pass
+
     # Reset state
     repo.analysis_status = "queued"
     repo.logs = []
     
-    # Optional cleanup of previous artifacts
+    # Remove previous diagram
     from sqlalchemy import delete
     await db.execute(delete(Diagram).where(Diagram.repo_id == repo_id))
     
@@ -217,6 +237,7 @@ async def retry_repo_analysis(
 
     background_tasks.add_task(run_repo_analysis, repo.id, async_session_maker)
     return repo
+
 
 @router.delete("/{repo_id}")
 async def delete_repository(
@@ -322,13 +343,111 @@ async def get_repo_files(
         return {"files": [], "total": 0, "error": str(e), "status": "error"}
 
 
+@router.get("/{repo_id}/file")
+async def get_repo_file(
+    repo_id: uuid.UUID,
+    path: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the raw content of a single file.
+
+    Strategy (in priority order):
+    1. Re-assemble from ChromaDB chunks  — always available after analysis
+    2. Read directly from the cloned repo on disk — available right after analysis
+    """
+    import os
+
+    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
+    result = await db.execute(stmt)
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+
+    # ── 1. Attempt to reconstruct from ChromaDB chunks ─────────────────────
+    try:
+        from app.core.vector_store import get_chroma_client
+        collection_name = f"repo_{str(repo_id).replace('-', '_')}"
+        client = get_chroma_client()
+        collection = client.get_collection(name=collection_name)
+
+        results = collection.get(
+            where={"path": path},
+            include=["documents", "metadatas"],
+            limit=500,
+        )
+        docs      = results.get("documents") or []
+        metadatas = results.get("metadatas") or []
+
+        if docs:
+            # Sort chunks by chunk_index so code appears in original file order
+            paired = list(zip(docs, metadatas))
+            paired.sort(key=lambda x: int((x[1] or {}).get("chunk_index", 0)))
+            # Each chunk already contains a trailing newline from the original file.
+            # Joining with "" preserves the original line structure without adding
+            # extra blank lines between chunks.
+            content = "".join(d for d, _ in paired if d)
+            size_bytes = len(content.encode("utf-8"))
+            return {
+                "path": path,
+                "content": content,
+                "size_bytes": size_bytes,
+                "lines": content.count("\n") + 1,
+                "source": "chromadb",
+            }
+    except Exception:
+        pass  # fall through to filesystem
+
+    # ── 2. Fallback: read from cloned repo on disk ─────────────────────────
+    from app.agents.nodes.git_cloner import get_clone_path
+    clone_path = get_clone_path(str(repo_id))
+
+    if not os.path.isdir(clone_path):
+        raise HTTPException(
+            status_code=404,
+            detail="File content unavailable: clone not found and ChromaDB lookup failed."
+        )
+
+    real_clone = os.path.realpath(clone_path)
+    file_path = os.path.realpath(os.path.join(clone_path, path.lstrip("/")))
+    # Guard against path traversal. os.path.commonpath avoids the classic
+    # str.startswith prefix bug (e.g. "/tmp/repo" matching "/tmp/repo-evil").
+    try:
+        if os.path.commonpath([file_path, real_clone]) != real_clone:
+            raise HTTPException(status_code=403, detail="Access denied")
+    except ValueError:
+        # Raised when paths are on different drives (Windows) — treat as denied.
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+            content = fh.read()
+        size_bytes = os.path.getsize(file_path)
+        return {
+            "path": path,
+            "content": content,
+            "size_bytes": size_bytes,
+            "lines": content.count("\n") + 1,
+            "source": "filesystem",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/{repo_id}/dependencies")
 async def get_repo_dependencies(
     repo_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Parse and return dependencies from manifest files in the cloned repo."""
+    """Parse and return dependencies from manifest files.
+
+    Strategy:
+    1. Read manifest files from ChromaDB (always available after analysis).
+    2. Fall back to cloned filesystem copy if available.
+    """
     import json as _json
     import os
     import re
@@ -342,20 +461,54 @@ async def get_repo_dependencies(
     if repo.analysis_status != "complete":
         return {"manifests": [], "status": repo.analysis_status}
 
-    from app.agents.nodes.git_cloner import get_clone_path
-    clone_path = get_clone_path(str(repo_id))
+    # ── Helper: fetch a manifest file's raw text ───────────────────────────
+    MANIFEST_FILES = [
+        "package.json",
+        "requirements.txt",
+        "pyproject.toml",
+        "go.mod",
+    ]
 
-    if not os.path.isdir(clone_path):
-        return {"manifests": [], "status": "clone_missing"}
+    async def get_file_text(filename: str) -> str | None:
+        """Try ChromaDB first, then filesystem."""
+        # 1. ChromaDB
+        try:
+            from app.core.vector_store import get_chroma_client
+            collection_name = f"repo_{str(repo_id).replace('-', '_')}"
+            client = get_chroma_client()
+            collection = client.get_collection(name=collection_name)
+            res = collection.get(
+                where={"path": filename},
+                include=["documents", "metadatas"],
+                limit=100,
+            )
+            docs = res.get("documents") or []
+            metas = res.get("metadatas") or []
+            if docs:
+                paired = sorted(zip(docs, metas), key=lambda x: int((x[1] or {}).get("chunk_index", 0)))
+                return "".join(d for d, _ in paired if d)
+        except Exception:
+            pass
+
+        # 2. Filesystem fallback
+        try:
+            from app.agents.nodes.git_cloner import get_clone_path
+            clone_path = get_clone_path(str(repo_id))
+            fpath = os.path.join(clone_path, filename)
+            if os.path.isfile(fpath):
+                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                    return f.read()
+        except Exception:
+            pass
+        return None
 
     manifests = []
 
     # ── package.json (Node.js) ─────────────────────────────────────────────
-    pkg_path = os.path.join(clone_path, "package.json")
-    if os.path.isfile(pkg_path):
+    pkg_text = await get_file_text("package.json")
+    if pkg_text:
         try:
-            with open(pkg_path, "r", encoding="utf-8", errors="replace") as f:
-                pkg = _json.load(f)
+            pkg = _json.loads(pkg_text)
             deps = []
             for name, version in (pkg.get("dependencies") or {}).items():
                 deps.append({"name": name, "version": version, "type": "runtime"})
@@ -374,33 +527,29 @@ async def get_repo_dependencies(
             pass
 
     # ── requirements.txt (Python) ──────────────────────────────────────────
-    req_path = os.path.join(clone_path, "requirements.txt")
-    if os.path.isfile(req_path):
+    req_text = await get_file_text("requirements.txt")
+    if req_text:
         try:
-            with open(req_path, "r", encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
             deps = []
-            for line in lines:
+            for line in req_text.splitlines():
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                # parse name==version or name>=version etc.
                 m = re.match(r'^([A-Za-z0-9_\-\.]+)\s*([><=!~^]+.+)?$', line)
                 if m:
                     deps.append({"name": m.group(1), "version": (m.group(2) or "").strip(), "type": "runtime"})
-            manifests.append({"file": "requirements.txt", "ecosystem": "pip", "dependencies": deps})
+            if deps:
+                manifests.append({"file": "requirements.txt", "ecosystem": "pip", "dependencies": deps})
         except Exception:
             pass
 
-    # ── pyproject.toml (Python) ────────────────────────────────────────────
-    pyproj_path = os.path.join(clone_path, "pyproject.toml")
-    if os.path.isfile(pyproj_path) and not any(m["file"] == "requirements.txt" for m in manifests):
+    # ── pyproject.toml (Python) — include even if requirements.txt exists ──
+    pyproj_text = await get_file_text("pyproject.toml")
+    if pyproj_text:
         try:
-            content = open(pyproj_path, "r", encoding="utf-8", errors="replace").read()
-            # Very simple extraction — look for [tool.poetry.dependencies] or [project] dependencies
             deps = []
             in_deps = False
-            for line in content.splitlines():
+            for line in pyproj_text.splitlines():
                 if re.match(r'\[.*dependencies.*\]', line, re.I):
                     in_deps = True
                     continue
@@ -416,14 +565,13 @@ async def get_repo_dependencies(
             pass
 
     # ── go.mod (Go) ────────────────────────────────────────────────────────
-    gomod_path = os.path.join(clone_path, "go.mod")
-    if os.path.isfile(gomod_path):
+    gomod_text = await get_file_text("go.mod")
+    if gomod_text:
         try:
-            content = open(gomod_path, "r", encoding="utf-8", errors="replace").read()
             module = ""
             deps = []
             in_require = False
-            for line in content.splitlines():
+            for line in gomod_text.splitlines():
                 line = line.strip()
                 if line.startswith("module "):
                     module = line.split(" ", 1)[1].strip()
@@ -440,12 +588,13 @@ async def get_repo_dependencies(
                             "version": parts[1],
                             "type": "indirect" if indirect else "runtime"
                         })
-            manifests.append({
-                "file": "go.mod",
-                "ecosystem": "go",
-                "name": module,
-                "dependencies": sorted(deps, key=lambda d: (d["type"], d["name"])),
-            })
+            if module or deps:
+                manifests.append({
+                    "file": "go.mod",
+                    "ecosystem": "go",
+                    "name": module,
+                    "dependencies": sorted(deps, key=lambda d: (d["type"], d["name"])),
+                })
         except Exception:
             pass
 
