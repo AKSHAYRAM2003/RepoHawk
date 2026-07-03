@@ -158,6 +158,7 @@ export default function DashboardPage() {
           </a>
           <Link
             href="/new-repo"
+
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-on-primary bg-primary-accent hover:opacity-90 transition-all cursor-pointer"
           >
             <Plus size={13} />

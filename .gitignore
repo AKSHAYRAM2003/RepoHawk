@@ -55,8 +55,3 @@ alembic.ini
 .idea/
 *.swp
 *.swo
-
-# Secrets
-*.pem
-secret_files/
-
