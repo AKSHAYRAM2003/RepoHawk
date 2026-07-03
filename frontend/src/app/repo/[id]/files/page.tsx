@@ -1,165 +1,290 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect, useMemo } from "react";
-import { FileCode2, Search, X, RefreshCw, AlertCircle, File, FileText, ChevronRight } from "lucide-react";
+import React, {
+  useState, useEffect, useMemo, useCallback, useRef,
+} from 'react';
+import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import { atomOneLight } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 
-interface RepoFile {
-  path: string;
-  language: string;
-  chunk_count: number;
-}
+// Register languages
+import ts   from 'react-syntax-highlighter/dist/esm/languages/hljs/typescript';
+import js   from 'react-syntax-highlighter/dist/esm/languages/hljs/javascript';
+import py   from 'react-syntax-highlighter/dist/esm/languages/hljs/python';
+import go   from 'react-syntax-highlighter/dist/esm/languages/hljs/go';
+import rs   from 'react-syntax-highlighter/dist/esm/languages/hljs/rust';
+import java from 'react-syntax-highlighter/dist/esm/languages/hljs/java';
+import cpp  from 'react-syntax-highlighter/dist/esm/languages/hljs/cpp';
+import cs   from 'react-syntax-highlighter/dist/esm/languages/hljs/csharp';
+import rb   from 'react-syntax-highlighter/dist/esm/languages/hljs/ruby';
+import php  from 'react-syntax-highlighter/dist/esm/languages/hljs/php';
+import swift   from 'react-syntax-highlighter/dist/esm/languages/hljs/swift';
+import kotlin  from 'react-syntax-highlighter/dist/esm/languages/hljs/kotlin';
+import md   from 'react-syntax-highlighter/dist/esm/languages/hljs/markdown';
+import json from 'react-syntax-highlighter/dist/esm/languages/hljs/json';
+import yaml from 'react-syntax-highlighter/dist/esm/languages/hljs/yaml';
+import bash from 'react-syntax-highlighter/dist/esm/languages/hljs/bash';
+import html from 'react-syntax-highlighter/dist/esm/languages/hljs/xml';
+import css  from 'react-syntax-highlighter/dist/esm/languages/hljs/css';
+import scss from 'react-syntax-highlighter/dist/esm/languages/hljs/scss';
+import sql  from 'react-syntax-highlighter/dist/esm/languages/hljs/sql';
+import dockerfile from 'react-syntax-highlighter/dist/esm/languages/hljs/dockerfile';
+import xml  from 'react-syntax-highlighter/dist/esm/languages/hljs/xml';
 
-const LANG_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  python:     { bg: "rgba(59,130,246,0.12)", text: "#60a5fa", dot: "#3b82f6" },
-  typescript: { bg: "rgba(99,102,241,0.12)", text: "#818cf8", dot: "#6366f1" },
-  javascript: { bg: "rgba(234,179,8,0.12)",  text: "#facc15", dot: "#eab308" },
-  go:         { bg: "rgba(6,182,212,0.12)",  text: "#22d3ee", dot: "#06b6d4" },
-  rust:       { bg: "rgba(249,115,22,0.12)", text: "#fb923c", dot: "#f97316" },
-  java:       { bg: "rgba(239,68,68,0.12)",  text: "#f87171", dot: "#ef4444" },
-  unknown:    { bg: "rgba(100,116,139,0.12)",text: "#94a3b8", dot: "#64748b" },
+SyntaxHighlighter.registerLanguage('typescript', ts);
+SyntaxHighlighter.registerLanguage('javascript', js);
+SyntaxHighlighter.registerLanguage('python', py);
+SyntaxHighlighter.registerLanguage('go', go);
+SyntaxHighlighter.registerLanguage('rust', rs);
+SyntaxHighlighter.registerLanguage('java', java);
+SyntaxHighlighter.registerLanguage('cpp', cpp);
+SyntaxHighlighter.registerLanguage('csharp', cs);
+SyntaxHighlighter.registerLanguage('ruby', rb);
+SyntaxHighlighter.registerLanguage('php', php);
+SyntaxHighlighter.registerLanguage('swift', swift);
+SyntaxHighlighter.registerLanguage('kotlin', kotlin);
+SyntaxHighlighter.registerLanguage('markdown', md);
+SyntaxHighlighter.registerLanguage('json', json);
+SyntaxHighlighter.registerLanguage('yaml', yaml);
+SyntaxHighlighter.registerLanguage('bash', bash);
+SyntaxHighlighter.registerLanguage('html', html);
+SyntaxHighlighter.registerLanguage('css', css);
+SyntaxHighlighter.registerLanguage('scss', scss);
+SyntaxHighlighter.registerLanguage('sql', sql);
+SyntaxHighlighter.registerLanguage('dockerfile', dockerfile);
+SyntaxHighlighter.registerLanguage('xml', xml);
+
+// ─── Language helpers ─────────────────────────────────────────────────────────
+
+const EXT_LANG: Record<string, string> = {
+  '.ts': 'typescript',  '.tsx': 'typescript',
+  '.js': 'javascript',  '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
+  '.py': 'python',      '.go': 'go',     '.rs': 'rust',
+  '.java': 'java',      '.cpp': 'cpp',   '.cc': 'cpp', '.cxx': 'cpp',
+  '.c': 'cpp',          '.h': 'cpp',     '.hpp': 'cpp',
+  '.cs': 'csharp',      '.rb': 'ruby',   '.php': 'php',
+  '.swift': 'swift',    '.kt': 'kotlin', '.kts': 'kotlin',
+  '.md': 'markdown',    '.mdx': 'markdown',
+  '.json': 'json',      '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'yaml',
+  '.sh': 'bash',        '.bash': 'bash', '.zsh': 'bash',
+  '.html': 'html',      '.htm': 'html',  '.vue': 'html',
+  '.css': 'css',        '.scss': 'scss', '.sass': 'scss', '.less': 'scss',
+  '.sql': 'sql',        '.xml': 'xml',   '.svg': 'xml',
+  '.proto': 'bash',     '.graphql': 'bash', '.gql': 'bash',
 };
 
-function getLangColor(lang: string) {
-  return LANG_COLORS[lang.toLowerCase()] ?? LANG_COLORS.unknown;
+function getLang(path: string): string {
+  const lower = path.toLowerCase();
+  if (lower.endsWith('dockerfile') || lower.split('/').pop() === 'dockerfile') return 'dockerfile';
+  const dot = lower.lastIndexOf('.');
+  return dot === -1 ? 'bash' : (EXT_LANG[lower.slice(dot)] ?? 'bash');
 }
 
-function getFileIcon(lang: string) {
-  const code = ["python", "typescript", "javascript", "go", "rust", "java", "c", "cpp", "cs", "php", "ruby", "swift"];
-  if (code.includes(lang.toLowerCase())) return <FileCode2 size={13} />;
-  if (["md", "txt", "rst"].includes(lang.toLowerCase())) return <FileText size={13} />;
-  return <File size={13} />;
+const LANG_COLOR: Record<string, string> = {
+  typescript: '#818cf8', javascript: '#facc15', python: '#60a5fa',
+  go: '#22d3ee',        rust: '#fb923c',        java: '#f87171',
+  bash: '#4ade80',      markdown: '#a3a3a3',    json: '#fbbf24',
+  yaml: '#c084fc',      css: '#38bdf8',         html: '#fb923c',
+  sql: '#f472b6',       dockerfile: '#34d399',  cpp: '#a78bfa',
+  csharp: '#60a5fa',    ruby: '#f87171',        swift: '#fb923c',
+  kotlin: '#a78bfa',    scss: '#f472b6',        xml: '#94a3b8',
+};
+function langColor(lang: string) { return LANG_COLOR[lang] ?? '#94a3b8'; }
+
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// Build a tree structure from flat file paths
-function buildTree(files: RepoFile[]) {
-  const root: Record<string, any> = {};
+function fileType(path: string, lang: string): string {
+  const name = path.split('/').pop() ?? '';
+  if (lang === 'typescript' && name.endsWith('.tsx')) return 'React Component (TSX)';
+  if (lang === 'typescript') return 'TypeScript Module';
+  if (lang === 'javascript' && name.endsWith('.jsx')) return 'React Component (JSX)';
+  if (lang === 'javascript') return 'JavaScript Module';
+  if (lang === 'python') return 'Python Module';
+  if (lang === 'go') return 'Go Source';
+  if (lang === 'rust') return 'Rust Source';
+  if (lang === 'java') return 'Java Class';
+  if (lang === 'json') return 'JSON Config';
+  if (lang === 'yaml') return 'YAML Config';
+  if (lang === 'markdown') return 'Markdown Document';
+  if (lang === 'css' || lang === 'scss') return 'Stylesheet';
+  if (lang === 'sql') return 'SQL Script';
+  if (lang === 'dockerfile') return 'Dockerfile';
+  return lang.charAt(0).toUpperCase() + lang.slice(1) + ' File';
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface FileInfo { path: string; language: string; chunk_count: number; }
+
+interface OpenFile extends FileInfo {
+  content?: string;
+  size_bytes?: number;
+  lines?: number;
+  loading?: boolean;
+  error?: string;
+}
+
+// ─── File tree builder ────────────────────────────────────────────────────────
+
+type TreeNode =
+  | { kind: 'file'; name: string; file: FileInfo }
+  | { kind: 'dir';  name: string; children: TreeNode[] };
+
+function buildTree(files: FileInfo[]): TreeNode[] {
+  const treeMap: Record<string, unknown> = {};
   for (const f of files) {
-    const parts = f.path.split("/");
-    let node = root;
+    const parts = f.path.split('/');
+    let cur: Record<string, unknown> = treeMap;
     for (let i = 0; i < parts.length - 1; i++) {
-      if (!node[parts[i]]) node[parts[i]] = { __children: {} };
-      node = node[parts[i]].__children;
+      if (!cur[parts[i]]) cur[parts[i]] = { __c: {} };
+      cur = (cur[parts[i]] as Record<string, unknown>).__c as Record<string, unknown>;
     }
-    const fname = parts[parts.length - 1];
-    node[fname] = { __file: f };
+    cur[parts[parts.length - 1]] = { __f: f };
   }
-  return root;
+
+  function toNodes(map: Record<string, unknown>): TreeNode[] {
+    return Object.keys(map)
+      .sort((a, b) => {
+        const aDir = !(map[a] as Record<string, unknown>).__f;
+        const bDir = !(map[b] as Record<string, unknown>).__f;
+        if (aDir && !bDir) return -1;
+        if (!aDir && bDir) return 1;
+        return a.localeCompare(b);
+      })
+      .map(k => {
+        const v = map[k] as Record<string, unknown>;
+        if (v.__f) return { kind: 'file' as const, name: k, file: v.__f as FileInfo };
+        return { kind: 'dir' as const, name: k, children: toNodes(v.__c as Record<string, unknown>) };
+      });
+  }
+
+  return toNodes(treeMap);
 }
 
-function TreeNode({
-  name,
-  node,
-  depth = 0,
-  searchActive,
+// ─── SVG file-type icons ──────────────────────────────────────────────────────
+
+function FileIcon({ lang, size = 13 }: { lang: string; size?: number }) {
+  const color = langColor(lang);
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+      <rect x="2" y="1" width="9" height="13" rx="1.5" fill={color + '22'} stroke={color} strokeWidth="1"/>
+      <path d="M8 1v4h4" stroke={color} strokeWidth="1" fill="none"/>
+      <line x1="4" y1="8"  x2="10" y2="8"  stroke={color} strokeWidth="0.8"/>
+      <line x1="4" y1="10" x2="9"  y2="10" stroke={color} strokeWidth="0.8"/>
+      <line x1="4" y1="12" x2="8"  y2="12" stroke={color} strokeWidth="0.8"/>
+    </svg>
+  );
+}
+
+function FolderIcon({ open, size = 13 }: { open: boolean; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+      {open ? (
+        <>
+          <path d="M1 4.5C1 3.67 1.67 3 2.5 3H6l1.5 2H14a1.5 1.5 0 011.5 1.5v6A1.5 1.5 0 0114 14H2.5A1.5 1.5 0 011 12.5V4.5z" fill="var(--folder-fill,#3b82f6)" fillOpacity="0.25" stroke="var(--folder-fill,#3b82f6)" strokeWidth="0.8"/>
+        </>
+      ) : (
+        <>
+          <path d="M1 4.5C1 3.67 1.67 3 2.5 3H6l1.5 2H13.5A1.5 1.5 0 0115 6.5v6A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5V4.5z" fill="var(--folder-fill,#3b82f6)" fillOpacity="0.18" stroke="var(--folder-fill,#3b82f6)" strokeWidth="0.8"/>
+        </>
+      )}
+    </svg>
+  );
+}
+
+// ─── TreeNode Row ─────────────────────────────────────────────────────────────
+
+function TreeNodeRow({
+  node, depth, activePath, onSelect,
 }: {
-  name: string;
-  node: any;
-  depth?: number;
-  searchActive: boolean;
+  node: TreeNode; depth: number; activePath: string | null;
+  onSelect: (f: FileInfo) => void;
 }) {
-  const isFile = !!node.__file;
-  const [open, setOpen] = useState(!searchActive && depth < 2);
+  const [open, setOpen] = useState(depth < 2);
+  const indent = 8 + depth * 16;
 
-  useEffect(() => {
-    if (searchActive) setOpen(true);
-  }, [searchActive]);
-
-  if (isFile) {
-    const f: RepoFile = node.__file;
-    const lc = getLangColor(f.language);
+  if (node.kind === 'file') {
+    const lang = getLang(node.file.path);
+    const accent = langColor(lang);
+    const isActive = activePath === node.file.path;
     return (
       <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onSelect(node.file)}
+        onKeyDown={e => e.key === 'Enter' && onSelect(node.file)}
+        className="group"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "5px 10px 5px " + (12 + depth * 16) + "px",
-          borderRadius: 7,
-          transition: "background 0.12s",
-          cursor: "default",
+          display: 'flex', alignItems: 'center', gap: 7,
+          paddingLeft: indent, paddingRight: 10,
+          height: 28, cursor: 'pointer', borderRadius: 6,
+          margin: '1px 6px',
+          background: isActive
+            ? `color-mix(in srgb, ${accent} 12%, var(--surface-container-high))`
+            : 'transparent',
+          borderLeft: `2px solid ${isActive ? accent : 'transparent'}`,
+          transition: 'background 0.12s, border-color 0.12s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "color-mix(in srgb, var(--on-surface) 5%, transparent)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        onMouseEnter={e => {
+          if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'color-mix(in srgb, var(--on-surface) 5%, transparent)';
+        }}
+        onMouseLeave={e => {
+          if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+        }}
       >
-        <span style={{ color: lc.dot, flexShrink: 0 }}>{getFileIcon(f.language)}</span>
-        <span style={{ fontSize: 12, color: "var(--on-surface)", flex: 1, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {name}
+        <FileIcon lang={lang} />
+        <span style={{
+          fontSize: 12.5, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          color: isActive ? accent : 'var(--on-surface-variant)',
+          fontWeight: isActive ? 600 : 400,
+        }}>
+          {node.name}
         </span>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 5,
-            background: lc.bg,
-            color: lc.text,
-            flexShrink: 0,
-            fontFamily: "monospace",
-          }}
-        >
-          {f.language}
-        </span>
-        {f.chunk_count > 0 && (
-          <span style={{ fontSize: 10, color: "var(--on-surface-variant)", flexShrink: 0, whiteSpace: "nowrap" }}>
-            {f.chunk_count} chunk{f.chunk_count !== 1 ? "s" : ""}
+        {node.file.chunk_count > 0 && (
+          <span style={{ fontSize: 9, color: 'var(--outline)', fontFamily: 'monospace', flexShrink: 0 }}>
+            {node.file.chunk_count}
           </span>
         )}
       </div>
     );
   }
 
-  const children = node.__children ?? node;
-  const childKeys = Object.keys(children).filter((k) => k !== "__children");
-
   return (
     <div>
       <div
-        onClick={() => setOpen((o) => !o)}
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={e => e.key === 'Enter' && setOpen(o => !o)}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "5px 10px 5px " + (10 + depth * 16) + "px",
-          borderRadius: 7,
-          cursor: "pointer",
-          transition: "background 0.12s",
+          display: 'flex', alignItems: 'center', gap: 7,
+          paddingLeft: indent, paddingRight: 10,
+          height: 28, cursor: 'pointer', borderRadius: 6,
+          margin: '1px 6px',
+          userSelect: 'none',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "color-mix(in srgb, var(--on-surface) 5%, transparent)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'color-mix(in srgb, var(--on-surface) 5%, transparent)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
       >
-        <ChevronRight
-          size={12}
-          style={{
-            color: "var(--on-surface-variant)",
-            transition: "transform 0.15s",
-            transform: open ? "rotate(90deg)" : "rotate(0deg)",
-            flexShrink: 0,
-          }}
-        />
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: open ? "var(--on-surface)" : "var(--on-surface-variant)",
-            fontFamily: "monospace",
-          }}
-        >
-          {name}/
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="var(--on-surface-variant)" style={{ flexShrink: 0, transition: 'transform 0.15s', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+          <path d="M1 3l4 4 4-4" stroke="var(--on-surface-variant)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <FolderIcon open={open} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--on-surface)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {node.name}
         </span>
-        <span style={{ fontSize: 10, color: "var(--on-surface-variant)", marginLeft: "auto", opacity: 0.5 }}>
-          {childKeys.length}
+        <span style={{ fontSize: 9, color: 'var(--outline)', fontFamily: 'monospace', flexShrink: 0 }}>
+          {node.children.length}
         </span>
       </div>
       {open && (
         <div>
-          {childKeys.sort((a, b) => {
-            const aDir = !children[a].__file;
-            const bDir = !children[b].__file;
-            if (aDir && !bDir) return -1;
-            if (!aDir && bDir) return 1;
-            return a.localeCompare(b);
-          }).map((k) => (
-            <TreeNode key={k} name={k} node={children[k]} depth={depth + 1} searchActive={searchActive} />
+          {node.children.map(c => (
+            <TreeNodeRow key={c.kind === 'file' ? c.file.path : c.name + depth} node={c} depth={depth + 1} activePath={activePath} onSelect={onSelect} />
           ))}
         </div>
       )}
@@ -167,258 +292,445 @@ function TreeNode({
   );
 }
 
+// ─── Tab bar ──────────────────────────────────────────────────────────────────
+
+function TabBar({
+  tabs, activePath, onSelect, onClose,
+}: {
+  tabs: OpenFile[]; activePath: string | null;
+  onSelect: (p: string) => void; onClose: (p: string) => void;
+}) {
+  if (!tabs.length) return null;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center',
+      background: 'var(--surface-container-low)',
+      borderBottom: '1px solid var(--outline-variant)',
+      overflowX: 'auto', flexShrink: 0, minHeight: 38,
+      scrollbarWidth: 'none',
+    }}>
+      {tabs.map(f => {
+        const isActive = f.path === activePath;
+        const lang = getLang(f.path);
+        const accent = langColor(lang);
+        const name = f.path.split('/').pop() ?? f.path;
+        return (
+          <div
+            key={f.path}
+            onClick={() => onSelect(f.path)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '0 14px', height: 38, flexShrink: 0,
+              cursor: 'pointer', userSelect: 'none',
+              borderRight: '1px solid var(--outline-variant)',
+              borderBottom: `2px solid ${isActive ? accent : 'transparent'}`,
+              background: isActive ? 'var(--surface-container)' : 'transparent',
+              transition: 'background 0.12s',
+            }}
+            onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'color-mix(in srgb, var(--on-surface) 5%, transparent)'; }}
+            onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: accent, flexShrink: 0, opacity: isActive ? 1 : 0.45 }} />
+            <span style={{ fontSize: 12, color: isActive ? 'var(--on-surface)' : 'var(--on-surface-variant)', whiteSpace: 'nowrap' }}>
+              {name}
+            </span>
+            {f.loading && <span style={{ fontSize: 10, color: accent }}>•</span>}
+            <button
+              onClick={e => { e.stopPropagation(); onClose(f.path); }}
+              style={{
+                background: 'none', border: 'none', color: 'var(--outline)',
+                cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '1px 2px',
+                borderRadius: 3, display: 'flex', alignItems: 'center',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--on-surface)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--outline)'; }}
+            >×</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function SourceFilesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
-  const [data, setData] = useState<{ files: RepoFile[]; total: number; status: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [langFilter, setLangFilter] = useState<string>("all");
 
+  const [files, setFiles] = useState<FileInfo[]>([]);
+  const [apiStatus, setApiStatus] = useState<'loading' | 'ready' | 'error' | 'incomplete'>('loading');
+  const [total, setTotal] = useState(0);
+
+  const [search, setSearch]       = useState('');
+  const [langFilter, setLangFilter] = useState('all');
+
+  const [openTabs, setOpenTabs]   = useState<OpenFile[]>([]);
+  const openTabsRef = useRef<OpenFile[]>([]);
+  useEffect(() => { openTabsRef.current = openTabs; }, [openTabs]);
+  const inflightRef = useRef<Set<string>>(new Set()); // tracks paths currently being fetched
+  const [activePath, setActivePath] = useState<string | null>(null);
+
+  // Dark mode detection
+  const [isDark, setIsDark] = useState(false);
   useEffect(() => {
-    setLoading(true);
+    const check = () => setIsDark(document.documentElement.classList.contains('dark'));
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+
+  // Sidebar resize
+  const [sidebarW, setSidebarW] = useState(264);
+  const dragRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWRef = useRef(264);
+  const onHandleMouseDown = useCallback((e: React.MouseEvent) => {
+    dragRef.current = true; startXRef.current = e.clientX; startWRef.current = sidebarW;
+    e.preventDefault();
+  }, [sidebarW]);
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      setSidebarW(Math.max(180, Math.min(480, startWRef.current + e.clientX - startXRef.current)));
+    };
+    const up = () => { dragRef.current = false; };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, []);
+
+  // Load file list
+  useEffect(() => {
     fetch(`/api/repos/${id}/files`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d) => setData(d))
-      .catch(() => setError("Failed to load file list."))
-      .finally(() => setLoading(false));
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === 'complete') {
+          setFiles(d.files ?? []);
+          setTotal(d.total ?? 0);
+          setApiStatus('ready');
+        } else {
+          setApiStatus('incomplete');
+        }
+      })
+      .catch(() => setApiStatus('error'));
   }, [id]);
 
-  const filteredFiles = useMemo(() => {
-    if (!data?.files) return [];
-    return data.files.filter((f) => {
-      const matchLang = langFilter === "all" || f.language === langFilter;
+  // Notify PropertiesPanel of the active file
+  const notifyProperties = useCallback((file: OpenFile | null) => {
+    if (!file) {
+      window.dispatchEvent(new CustomEvent('repohawk-node-selected', { detail: { node: null } }));
+      return;
+    }
+    const lang = getLang(file.path);
+    window.dispatchEvent(new CustomEvent('repohawk-node-selected', {
+      detail: {
+        node: {
+          id: file.path,
+          data: {
+            label: file.path.split('/').pop() ?? file.path,
+            type: 'file',
+            layer: file.path.includes('/') ? file.path.split('/').slice(0, -1).join('/') : '(root)',
+            description: fileType(file.path, lang),
+            tech: lang,
+            // Extra metadata stored in group so we can show it
+            group: [
+              `Language: ${lang}`,
+              file.lines ? `Lines: ${file.lines.toLocaleString()}` : '',
+              file.size_bytes != null ? `Size: ${formatBytes(file.size_bytes)}` : '',
+              `Chunks: ${file.chunk_count}`,
+            ].filter(Boolean).join(' · '),
+          },
+        },
+      },
+    }));
+  }, []);
+
+  // Open a file — uses openTabsRef + inflightRef to prevent double-fetch
+  const openFile = useCallback(async (f: FileInfo) => {
+    setActivePath(f.path);
+
+    // Already fully loaded? Just switch to it.
+    const existing = openTabsRef.current.find(t => t.path === f.path);
+    if (existing && existing.content !== undefined) {
+      notifyProperties(existing);
+      return;
+    }
+
+    // Already being fetched? Just add/switch tab, don't double-fetch.
+    if (inflightRef.current.has(f.path)) {
+      setOpenTabs(prev => prev.find(t => t.path === f.path) ? prev : [...prev, { ...f, loading: true }]);
+      return;
+    }
+
+    // Add tab in loading state
+    setOpenTabs(prev => prev.find(t => t.path === f.path) ? prev : [...prev, { ...f, loading: true }]);
+    inflightRef.current.add(f.path);
+
+    try {
+      const res = await fetch(`/api/repos/${id}/file?path=${encodeURIComponent(f.path)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        const errMsg = err.detail ?? `HTTP ${res.status}`;
+        setOpenTabs(prev => prev.map(t => t.path === f.path ? { ...t, loading: false, error: errMsg } : t));
+        return;
+      }
+      const data = await res.json();
+      const loaded: OpenFile = {
+        ...f, loading: false,
+        content: data.content ?? '',
+        size_bytes: data.size_bytes,
+        lines: data.lines,
+      };
+      setOpenTabs(prev => prev.map(t => t.path === f.path ? loaded : t));
+      notifyProperties(loaded);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setOpenTabs(prev => prev.map(t => t.path === f.path ? { ...t, loading: false, error: msg } : t));
+    } finally {
+      inflightRef.current.delete(f.path);
+    }
+  }, [id, notifyProperties]);
+
+  const closeTab = useCallback((path: string) => {
+    setOpenTabs(prev => {
+      const next = prev.filter(t => t.path !== path);
+      if (activePath === path) {
+        const newActive = next.length ? next[next.length - 1] : null;
+        setActivePath(newActive ? newActive.path : null);
+        notifyProperties(newActive ?? null);
+      }
+      return next;
+    });
+  }, [activePath, notifyProperties]);
+
+  // Filtered files + tree
+  const filteredFiles = useMemo(() =>
+    files.filter(f => {
+      const matchLang   = langFilter === 'all' || f.language === langFilter;
       const matchSearch = !search || f.path.toLowerCase().includes(search.toLowerCase());
       return matchLang && matchSearch;
-    });
-  }, [data, search, langFilter]);
+    }),
+  [files, search, langFilter]);
 
-  const languages = useMemo(() => {
-    if (!data?.files) return [];
-    const langs = [...new Set(data.files.map((f) => f.language))].sort();
-    return langs;
-  }, [data]);
+  const tree      = useMemo(() => buildTree(filteredFiles), [filteredFiles]);
+  const languages = useMemo(() => [...new Set(files.map(f => f.language))].sort(), [files]);
 
-  const langCounts = useMemo(() => {
-    const m: Record<string, number> = {};
-    (data?.files ?? []).forEach((f) => {
-      m[f.language] = (m[f.language] ?? 0) + 1;
-    });
-    return m;
-  }, [data]);
+  const activeFile = openTabs.find(t => t.path === activePath) ?? null;
+  const activeLang = activeFile ? getLang(activeFile.path) : 'bash';
+  const accent     = langColor(activeLang);
 
-  const tree = useMemo(() => buildTree(filteredFiles), [filteredFiles]);
-  const treeKeys = Object.keys(tree).sort((a, b) => {
-    const aDir = !tree[a].__file;
-    const bDir = !tree[b].__file;
-    if (aDir && !bDir) return -1;
-    if (!aDir && bDir) return 1;
-    return a.localeCompare(b);
-  });
+  // ── Loading states ─────────────────────────────────────────────────────────
+  if (apiStatus === 'loading') return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', gap:12, flexDirection:'column' }}>
+      <div style={{ width:22, height:22, border:'2px solid var(--primary)', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
+      <span style={{ color:'var(--on-surface-variant)', fontSize:13 }}>Loading file index…</span>
+    </div>
+  );
+  if (apiStatus === 'error') return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#f87171', fontSize:13 }}>Failed to load files.</div>
+  );
+  if (apiStatus === 'incomplete') return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', flexDirection:'column', gap:10 }}>
+      <span style={{ fontSize:32 }}>⏳</span>
+      <span style={{ color:'var(--on-surface-variant)', fontSize:13 }}>Run analysis first to index source files.</span>
+    </div>
+  );
 
-  if (loading) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-surface">
-        <RefreshCw className="w-6 h-6 animate-spin text-primary-color" />
-        <span className="ml-3 text-sm text-on-surface-variant">Loading file index…</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-8">
-        <AlertCircle className="w-10 h-10 text-rose-400 opacity-70" />
-        <p className="text-sm text-on-surface-variant">{error}</p>
-      </div>
-    );
-  }
-
-  if (data?.status !== "complete") {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-8 text-center">
-        <FileCode2 className="w-10 h-10 opacity-30 text-on-surface-variant" />
-        <p className="text-sm font-semibold text-on-surface">Files not available yet</p>
-        <p className="text-xs text-on-surface-variant max-w-xs">
-          {data?.status === "running" || data?.status === "queued"
-            ? "Analysis is in progress. Files will appear once it completes."
-            : "Run the analysis first to index the source files."}
-        </p>
-      </div>
-    );
-  }
-
+  // ── Main Layout ────────────────────────────────────────────────────────────
   return (
-    <div className="w-full h-full flex flex-col bg-surface overflow-hidden">
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 20px",
-          borderBottom: "1px solid var(--outline-variant)",
-          background: "var(--surface-low)",
-          flexShrink: 0,
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 10,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(99,102,241,0.12)",
-              color: "#818cf8",
-            }}
-          >
-            <FileCode2 size={16} />
-          </div>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "var(--on-surface)" }}>Source Files</p>
-            <p style={{ fontSize: 11, color: "var(--on-surface-variant)" }}>
-              {data?.total ?? 0} indexed files
-            </p>
+    <div style={{ display:'flex', height:'100%', background:'var(--surface)', overflow:'hidden', position:'relative' }}>
+
+      {/* ── Sidebar ── */}
+      <div style={{
+        width: sidebarW, flexShrink:0, display:'flex', flexDirection:'column',
+        background:'var(--surface-container-low)',
+        borderRight:'1px solid var(--outline-variant)',
+        overflow:'hidden',
+      }}>
+
+        {/* Header */}
+        <div style={{
+          padding:'12px 14px 10px',
+          borderBottom:'1px solid var(--outline-variant)',
+          flexShrink:0,
+        }}>
+          <p style={{ fontSize:10, fontWeight:800, letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--on-surface-variant)', marginBottom:8 }}>
+            Explorer
+          </p>
+          {/* Search */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:7,
+            background:'var(--surface-container)',
+            border:'1px solid var(--outline-variant)',
+            borderRadius:8, padding:'5px 10px',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--outline)" strokeWidth="2.5">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search files…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                background:'transparent', border:'none', outline:'none',
+                color:'var(--on-surface)', fontSize:12, flex:1, width:0,
+              }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{ background:'none', border:'none', color:'var(--outline)', cursor:'pointer', padding:0, fontSize:14, lineHeight:1, display:'flex' }}>
+                ×
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Search bar */}
-        <div style={{ position: "relative", flex: 1, maxWidth: 280 }}>
-          <Search
-            size={12}
-            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#475569", pointerEvents: "none" }}
-          />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search file paths…"
-            style={{
-              width: "100%",
-              paddingLeft: 28,
-              paddingRight: search ? 28 : 10,
-              paddingTop: 6,
-              paddingBottom: 6,
-              fontSize: 12,
-              background: "var(--surface-container-highest)",
-              border: "1px solid var(--outline-variant)",
-              borderRadius: 8,
-              color: "var(--on-surface)",
-              outline: "none",
-            }}
-            onFocus={(e) => (e.target.style.borderColor = "rgba(99,102,241,0.5)")}
-            onBlur={(e) => (e.target.style.borderColor = "var(--outline-variant)")}
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#475569" }}
-            >
-              <X size={10} />
-            </button>
+        {/* Language chips */}
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap', padding:'8px 10px', borderBottom:'1px solid var(--outline-variant)', flexShrink:0 }}>
+          {(['all', ...languages]).map(lang => {
+            const isActive = langFilter === lang;
+            const color = lang === 'all' ? 'var(--primary)' : langColor(lang);
+            const rawColor = lang === 'all' ? undefined : langColor(lang);
+            return (
+              <button
+                key={lang}
+                onClick={() => setLangFilter(lang)}
+                style={{
+                  padding:'2px 8px', borderRadius:12, fontSize:9.5, fontWeight:700,
+                  cursor:'pointer',
+                  border: isActive
+                    ? `1px solid ${rawColor ? rawColor + '80' : 'var(--primary)'}`
+                    : '1px solid var(--outline-variant)',
+                  background: isActive
+                    ? (rawColor ? rawColor + '20' : 'color-mix(in srgb, var(--primary) 15%, transparent)')
+                    : 'transparent',
+                  color: isActive ? (rawColor ?? 'var(--primary)') : 'var(--on-surface-variant)',
+                  transition:'all 0.12s',
+                }}
+              >
+                {lang === 'all' ? `All (${total})` : lang}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* File tree */}
+        <div style={{ flex:1, overflowY:'auto', padding:'4px 0', scrollbarWidth:'thin', scrollbarColor:'var(--outline-variant) transparent' }}>
+          {filteredFiles.length === 0 ? (
+            <div style={{ padding:24, textAlign:'center', color:'var(--on-surface-variant)', fontSize:12 }}>
+              No files match
+            </div>
+          ) : (
+            tree.map(node => (
+              <TreeNodeRow
+                key={node.kind === 'file' ? node.file.path : node.name}
+                node={node} depth={0}
+                activePath={activePath}
+                onSelect={openFile}
+              />
+            ))
           )}
         </div>
+
+        {/* Footer */}
+        <div style={{
+          padding:'6px 14px', borderTop:'1px solid var(--outline-variant)',
+          flexShrink:0, display:'flex', gap:8, alignItems:'center',
+        }}>
+          <span style={{ fontSize:10, color:'var(--on-surface-variant)' }}>{filteredFiles.length.toLocaleString()} files</span>
+          <span style={{ fontSize:10, color:'var(--outline)' }}>·</span>
+          <span style={{ fontSize:10, color:'var(--on-surface-variant)' }}>{languages.length} lang{languages.length !== 1 ? 's' : ''}</span>
+        </div>
       </div>
 
-      {/* Lang filter chips */}
+      {/* ── Resize handle ── */}
       <div
-        style={{
-          display: "flex",
-          gap: 6,
-          padding: "8px 16px",
-          flexWrap: "wrap",
-          borderBottom: "1px solid var(--outline-variant)",
-          flexShrink: 0,
-          background: "var(--surface-low)",
-        }}
-      >
-        <button
-          onClick={() => setLangFilter("all")}
-          style={{
-            padding: "3px 10px",
-            borderRadius: 20,
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-            border: "1px solid",
-            background: langFilter === "all" ? "rgba(99,102,241,0.15)" : "transparent",
-            borderColor: langFilter === "all" ? "rgba(99,102,241,0.4)" : "var(--outline-variant)",
-            color: langFilter === "all" ? "#818cf8" : "var(--on-surface-variant)",
-            transition: "all 0.12s",
-          }}
-        >
-          All ({data?.total ?? 0})
-        </button>
-        {languages.map((lang) => {
-          const lc = getLangColor(lang);
-          const active = langFilter === lang;
-          return (
-            <button
-              key={lang}
-              onClick={() => setLangFilter(active ? "all" : lang)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                padding: "3px 10px",
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                border: "1px solid",
-                background: active ? lc.bg : "transparent",
-                borderColor: active ? lc.dot + "60" : "var(--outline-variant)",
-                color: active ? lc.text : "var(--on-surface-variant)",
-                transition: "all 0.12s",
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: lc.dot, flexShrink: 0 }} />
-              {lang} ({langCounts[lang] ?? 0})
-            </button>
-          );
-        })}
-      </div>
+        onMouseDown={onHandleMouseDown}
+        style={{ width:4, cursor:'col-resize', background:'transparent', flexShrink:0, zIndex:10, transition:'background 0.15s' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--primary)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+      />
 
-      {/* File tree */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px", scrollbarWidth: "thin", scrollbarColor: "rgba(99,102,241,0.2) transparent" }}>
-        {filteredFiles.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 20px" }}>
-            <FileCode2 size={24} style={{ margin: "0 auto 8px", opacity: 0.4, color: "var(--on-surface-variant)" }} />
-            <p style={{ fontSize: 13, fontWeight: 600, color: "var(--on-surface)" }}>No files match</p>
-            <p style={{ fontSize: 11, marginTop: 4, color: "var(--on-surface-variant)" }}>Try a different search or filter</p>
+      {/* ── Editor area ── */}
+      <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
+
+        {/* Tab bar */}
+        <TabBar tabs={openTabs} activePath={activePath} onSelect={setActivePath} onClose={closeTab} />
+
+        {/* File path + meta breadcrumb */}
+        {activeFile && !activeFile.loading && !activeFile.error && (
+          <div style={{
+            display:'flex', alignItems:'center', gap:14,
+            padding:'4px 16px',
+            background:'var(--surface-container-low)',
+            borderBottom:'1px solid var(--outline-variant)',
+            flexShrink:0,
+          }}>
+            <span style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
+              <span style={{ width:7, height:7, borderRadius:'50%', background:accent }} />
+              <span style={{ fontSize:10, color:accent, fontWeight:700, fontFamily:'monospace' }}>{activeLang}</span>
+            </span>
+            <span style={{ fontSize:11, color:'var(--on-surface-variant)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>
+              {activeFile.path}
+            </span>
+            <span style={{ fontSize:10, color:'var(--outline)', flexShrink:0, display:'flex', gap:10 }}>
+              {activeFile.lines && <span>{activeFile.lines.toLocaleString()} lines</span>}
+              {activeFile.size_bytes != null && <span>{formatBytes(activeFile.size_bytes)}</span>}
+            </span>
           </div>
-        ) : (
-          treeKeys.map((k) => (
-            <TreeNode key={k} name={k} node={tree[k]} depth={0} searchActive={!!search} />
-          ))
         )}
+
+        {/* Code viewer */}
+        <div style={{ flex:1, overflow:'auto', background: isDark ? '#1a1b26' : '#fafafa' }}>
+          {!activePath ? (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:14, userSelect:'none', opacity:0.4 }}>
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" strokeWidth="1.2">
+                <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+              </svg>
+              <span style={{ color:'var(--on-surface-variant)', fontSize:13 }}>Select a file from the tree</span>
+            </div>
+          ) : activeFile?.loading ? (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', gap:10, flexDirection:'column' }}>
+              <div style={{ width:18, height:18, border:`2px solid ${accent}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.6s linear infinite' }} />
+              <span style={{ color:'var(--on-surface-variant)', fontSize:12 }}>Loading…</span>
+            </div>
+          ) : activeFile?.error ? (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#f87171', fontSize:13 }}>
+              {activeFile.error}
+            </div>
+          ) : activeFile?.content !== undefined ? (
+            <SyntaxHighlighter
+              language={activeLang}
+              style={isDark ? atomOneDark : atomOneLight}
+              showLineNumbers
+              lineNumberStyle={{
+                color: isDark ? '#3b4261' : '#c5c8d1',
+                fontSize:11, minWidth:'3.5em', userSelect:'none',
+                paddingRight:16, fontFamily:'monospace', borderRight:`1px solid ${isDark ? '#1e2030' : '#e5e7eb'}`, marginRight:12,
+              }}
+              customStyle={{
+                margin:0, padding:'14px 0',
+                background: isDark ? '#1a1b26' : '#fafafa',
+                fontSize:13, fontFamily:"'JetBrains Mono','Fira Code','Cascadia Code','Menlo',monospace",
+                lineHeight:1.7, minHeight:'100%',
+              }}
+              codeTagProps={{ style:{ fontFamily:'inherit' } }}
+              wrapLongLines={false}
+            >
+              {activeFile.content}
+            </SyntaxHighlighter>
+          ) : null}
+        </div>
       </div>
 
-      {/* Footer stats */}
-      <div
-        style={{
-          display: "flex",
-          gap: 16,
-          padding: "8px 16px",
-          borderTop: "1px solid var(--outline-variant)",
-          background: "var(--surface-low)",
-          flexShrink: 0,
-        }}
-      >
-        {[
-          { label: "Showing", val: filteredFiles.length },
-          { label: "Languages", val: languages.length },
-          { label: "Chunks", val: (data?.files ?? []).reduce((s, f) => s + f.chunk_count, 0) },
-        ].map(({ label, val }) => (
-          <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--on-surface-variant)", opacity: 0.6 }}>{label}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--on-surface)" }}>{val.toLocaleString()}</span>
-          </div>
-        ))}
-      </div>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        ::-webkit-scrollbar { width:6px; height:6px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:var(--outline-variant); border-radius:3px; }
+        ::-webkit-scrollbar-thumb:hover { background:var(--outline); }
+      `}</style>
     </div>
   );
 }
