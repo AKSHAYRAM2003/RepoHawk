@@ -16,14 +16,16 @@ class Settings(BaseSettings):
     MODEL_CHAT: str = "nvidia/nemotron-3-nano-30b-a3b:free"
     MODEL_DIAGRAM: str = "openai/gpt-oss-120b:free"
     MODEL_CRITIQUE: str = "openai/gpt-oss-120b:free"
-    MODEL_EMBED: str = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+    # NOTE: Embeddings are computed LOCALLY via sentence-transformers
+    # (all-MiniLM-L6-v2, 384-dim) — see app/core/embeddings.py. There is no
+    # remote embedding model, so no MODEL_EMBED setting is needed here.
     MODEL_FALLBACK: str = "nvidia/nemotron-3-nano-30b-a3b:free"
     MODEL_REWRITE: str = "nvidia/nemotron-3-nano-30b-a3b:free"
     
-    # Chroma
-    CHROMA_HOST: str = "localhost"
-    CHROMA_PORT: int = 8000
-    
+    # Chroma runs embedded/on-disk via a PersistentClient (see
+    # app/core/vector_store.py) — there is no separate Chroma server, so no
+    # host/port settings are needed here.
+
     # Auth — JWT_SECRET_KEY MUST be overridden in .env. App refuses to start with the default.
     JWT_SECRET_KEY: str = "change-me"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
@@ -33,14 +35,11 @@ class Settings(BaseSettings):
     RESEND_PASSWORD_RESET_TEMPLATE_ID: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
     
-    # GitHub App
-    GITHUB_APP_ID: str = ""
-    GITHUB_WEBHOOK_SECRET: str = ""
-    GITHUB_PRIVATE_KEY_PATH: str = ""
-    
     class Config:
         env_file = ".env"
+        # Silently ignore unknown env vars (e.g. stale MODEL_EMBED, CHROMA_HOST)
+        # so the app doesn't crash when the .env has keys removed from Settings.
         extra = "ignore"
 
-
 settings = Settings()
+

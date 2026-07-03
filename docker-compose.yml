@@ -18,14 +18,9 @@ services:
       timeout: 5s
       retries: 5
 
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: repohawk_chromadb
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma_data:/chroma/chroma
+# NOTE: ChromaDB is not run as a service. RepoHawk uses an embedded, on-disk
+# ChromaDB PersistentClient (backend/chroma_db/), so no Chroma server container
+# is required. This also avoids a port collision with the API on :8000.
 
 volumes:
   postgres_data:
-  chroma_data:
