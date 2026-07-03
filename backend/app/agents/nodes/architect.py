@@ -90,8 +90,17 @@ FILES ANALYZED: {file_count}
 
 STRUCTURE SUMMARY (first 2 snippets per file):
 {structure_summary}
-
+{critique_block}
 Infer the actual architecture from these files. Output the JSON diagram only.
+"""
+
+# Injected into the prompt only when regenerating after a failed critique.
+CRITIQUE_FEEDBACK_TEMPLATE = """
+A previous attempt at this diagram was REJECTED by a QA reviewer. You MUST fix
+the issues below in this new attempt:
+
+REVIEWER FEEDBACK:
+{critique_feedback}
 """
 
 def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -100,6 +109,15 @@ def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     if not parsed_files:
         return {"error": "No parsed files to architect", "current_step": "error"}
+
+    # On a retry (critique failed previously), feed the reviewer's feedback back
+    # into the prompt so the regeneration actually addresses the problems.
+    retry_count = state.get("retry_count", 0) or 0
+    critique_feedback = state.get("critique_feedback", "") or ""
+    if retry_count > 0 and critique_feedback:
+        critique_block = CRITIQUE_FEEDBACK_TEMPLATE.format(critique_feedback=critique_feedback)
+    else:
+        critique_block = ""
 
     summary_lines = []
     for pf in parsed_files:
@@ -119,7 +137,8 @@ def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
             HumanMessage(content=USER_PROMPT_TEMPLATE.format(
                 repo_url=repo_url,
                 file_count=len(parsed_files),
-                structure_summary=structure_summary
+                structure_summary=structure_summary,
+                critique_block=critique_block,
             ))
         ]
 

@@ -11,22 +11,28 @@ from app.agents.nodes.git_cloner import git_cloner_node
 from app.agents.nodes.ast_parser import ast_parser_node
 from app.agents.nodes.embedder import embedder_node
 from app.agents.nodes.architect import architect_node
-from app.agents.nodes.critique import critique_node
+from app.agents.nodes.critique import critique_node, MAX_CRITIQUE_ATTEMPTS
 from app.agents.nodes.qa_agent import qa_agent_node
 
 # --- Analysis Pipeline Logic ---
 
+
 def should_continue_after_critique(state: AnalysisState) -> Literal["architect", "end"]:
     """
-    Conditional edge: Decides whether to retry diagram generation or finish.
+    Conditional edge: Decides whether to regenerate the diagram or finish.
+
+    - If the critique passed, we're done.
+    - If the critique failed but we've hit the attempt cap, give up (ship
+      the best-effort diagram rather than looping forever).
+    - Otherwise, loop back to `architect` to regenerate using the critique
+      feedback (which architect_node reads from state).
     """
     if state.get("critique_passed", False):
         return "end"
-    
-    if state.get("retry_count", 0) >= 1:
-        # Stop after 3 retries even if it failed
+
+    if state.get("retry_count", 0) >= MAX_CRITIQUE_ATTEMPTS:
         return "end"
-    
+
     return "architect"
 
 def create_analysis_graph():

@@ -12,6 +12,12 @@ from typing import Dict, Any, List
 from app.agents.state import AnalysisState
 from app.core.llm import get_critique_llm, _invoke_with_retry
 
+# Maximum number of critique passes before we give up and ship the best-effort
+# diagram. `retry_count` is incremented once per critique run, so a value of 3
+# allows the initial diagram + up to 2 regenerations. The graph's retry edge
+# imports this same constant to keep the loop bound and the messaging in sync.
+MAX_CRITIQUE_ATTEMPTS = 3
+
 SYSTEM_PROMPT = """
 You are a Quality Assurance Architect. Critique an architecture diagram.
 
@@ -89,23 +95,42 @@ def critique_node(state: Dict[str, Any]) -> Dict[str, Any]:
         passed = response.get("critique_passed", False)
         feedback = response.get("critique_feedback", "No feedback provided.")
 
+        attempt = retry_count + 1
+
+        # Build a progress log that reflects what will actually happen next so
+        # the UI messaging matches the graph's retry decision.
+        if passed:
+            log = f"✅ Critique passed (attempt {attempt}): {feedback}"
+        elif attempt >= MAX_CRITIQUE_ATTEMPTS:
+            log = (
+                f"⚠️ Critique failed on final attempt {attempt} — shipping best-effort "
+                f"diagram: {feedback}"
+            )
+        else:
+            log = f"🔄 Critique failed (attempt {attempt}) — regenerating diagram: {feedback}"
+
         return {
             "critique_passed": passed,
             "critique_feedback": feedback,
-            "retry_count": retry_count + 1,
+            "retry_count": attempt,
             "current_step": "critique_complete",
-            "progress_log": [
-                f"{'✅' if passed else '⚠️'} Critique {'passed' if passed else 'failed'}: {feedback}"
-            ]
+            "progress_log": [log],
         }
 
     except Exception as e:
-        # If critique fails technically, we'll just let it pass to avoid infinite blocks,
-        # but log the warning.
+        # Fail OPEN: if the critique step errors technically (rate limit, bad JSON,
+        # model unavailable), we accept the current diagram rather than blocking the
+        # whole pipeline. critique_passed=True so the graph ends here. The feedback
+        # text is phrased consistently with a pass so it never contradicts the flag.
         return {
-            "critique_passed": True, 
-            "critique_feedback": f"Critique failed technically: {str(e)}",
-            "retry_count": retry_count + 1,
+            "critique_passed": True,
+            "critique_feedback": (
+                "Critique skipped due to a technical error; the diagram was accepted "
+                f"without review. Details: {str(e)}"
+            ),
+            "retry_count": (retry_count or 0) + 1,
             "current_step": "critique_complete",
-            "progress_log": [f"⚠️ Critique agent technical error (proceeding anyway): {str(e)}"]
+            "progress_log": [
+                f"⚠️ Critique agent technical error — accepting diagram without review: {str(e)}"
+            ],
         }
