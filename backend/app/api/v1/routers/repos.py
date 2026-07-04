@@ -343,28 +343,31 @@ async def get_repo_files(
         return {"files": [], "total": 0, "error": str(e), "status": "error"}
 
 
-@router.get("/{repo_id}/file")
-async def get_repo_file(
-    repo_id: uuid.UUID,
-    path: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Return the raw content of a single file.
-
-    Strategy (in priority order):
-    1. Re-assemble from ChromaDB chunks  — always available after analysis
-    2. Read directly from the cloned repo on disk — available right after analysis
+async def get_file_content_from_source(repo_id: str, path: str, allow_chroma_fallback: bool = True):
+    """
+    Get file content by trying the filesystem clone first (true bytes),
+    and falling back to ChromaDB reconstruction if the clone is gone.
+    Returns (content, source) or (None, None).
     """
     import os
-
-    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
-    result = await db.execute(stmt)
-    repo = result.scalar_one_or_none()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repo not found")
-
-    # ── 1. Attempt to reconstruct from ChromaDB chunks ─────────────────────
+    from app.agents.nodes.git_cloner import get_clone_path
+    
+    # ── 1. Filesystem (Primary Source of Truth) ──
+    try:
+        clone_path = get_clone_path(str(repo_id))
+        if os.path.isdir(clone_path):
+            real_clone = os.path.realpath(clone_path)
+            file_path = os.path.realpath(os.path.join(clone_path, path.lstrip("/")))
+            if os.path.commonpath([file_path, real_clone]) == real_clone and os.path.isfile(file_path):
+                with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+                    return fh.read(), "filesystem"
+    except Exception:
+        pass
+        
+    if not allow_chroma_fallback:
+        return None, None
+        
+    # ── 2. ChromaDB Fallback (Potentially Truncated) ──
     try:
         from app.core.vector_store import get_chroma_client
         collection_name = f"repo_{str(repo_id).replace('-', '_')}"
@@ -376,64 +379,46 @@ async def get_repo_file(
             include=["documents", "metadatas"],
             limit=500,
         )
-        docs      = results.get("documents") or []
+        docs = results.get("documents") or []
         metadatas = results.get("metadatas") or []
 
         if docs:
-            # Sort chunks by chunk_index so code appears in original file order
             paired = list(zip(docs, metadatas))
             paired.sort(key=lambda x: int((x[1] or {}).get("chunk_index", 0)))
-            # Each chunk already contains a trailing newline from the original file.
-            # Joining with "" preserves the original line structure without adding
-            # extra blank lines between chunks.
             content = "".join(d for d, _ in paired if d)
-            size_bytes = len(content.encode("utf-8"))
-            return {
-                "path": path,
-                "content": content,
-                "size_bytes": size_bytes,
-                "lines": content.count("\n") + 1,
-                "source": "chromadb",
-            }
+            return content, "chromadb"
     except Exception:
-        pass  # fall through to filesystem
+        pass
+        
+    return None, None
 
-    # ── 2. Fallback: read from cloned repo on disk ─────────────────────────
-    from app.agents.nodes.git_cloner import get_clone_path
-    clone_path = get_clone_path(str(repo_id))
 
-    if not os.path.isdir(clone_path):
-        raise HTTPException(
-            status_code=404,
-            detail="File content unavailable: clone not found and ChromaDB lookup failed."
-        )
+@router.get("/{repo_id}/file")
+async def get_repo_file(
+    repo_id: uuid.UUID,
+    path: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the raw content of a single file."""
+    stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
+    result = await db.execute(stmt)
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
 
-    real_clone = os.path.realpath(clone_path)
-    file_path = os.path.realpath(os.path.join(clone_path, path.lstrip("/")))
-    # Guard against path traversal. os.path.commonpath avoids the classic
-    # str.startswith prefix bug (e.g. "/tmp/repo" matching "/tmp/repo-evil").
-    try:
-        if os.path.commonpath([file_path, real_clone]) != real_clone:
-            raise HTTPException(status_code=403, detail="Access denied")
-    except ValueError:
-        # Raised when paths are on different drives (Windows) — treat as denied.
-        raise HTTPException(status_code=403, detail="Access denied")
-    if not os.path.isfile(file_path):
+    content, source = await get_file_content_from_source(str(repo_id), path, allow_chroma_fallback=True)
+    if content is None:
         raise HTTPException(status_code=404, detail=f"File not found: {path}")
 
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
-            content = fh.read()
-        size_bytes = os.path.getsize(file_path)
-        return {
-            "path": path,
-            "content": content,
-            "size_bytes": size_bytes,
-            "lines": content.count("\n") + 1,
-            "source": "filesystem",
-        }
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    size_bytes = len(content.encode("utf-8"))
+    return {
+        "path": path,
+        "content": content,
+        "size_bytes": size_bytes,
+        "lines": content.count("\n") + 1,
+        "source": source,
+    }
 
 
 @router.get("/{repo_id}/dependencies")
@@ -442,14 +427,8 @@ async def get_repo_dependencies(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Parse and return dependencies from manifest files.
-
-    Strategy:
-    1. Read manifest files from ChromaDB (always available after analysis).
-    2. Fall back to cloned filesystem copy if available.
-    """
+    """Parse and return dependencies from manifest files."""
     import json as _json
-    import os
     import re
 
     stmt = select(Repo).where(Repo.id == repo_id, Repo.user_id == current_user.id)
@@ -470,37 +449,9 @@ async def get_repo_dependencies(
     ]
 
     async def get_file_text(filename: str) -> str | None:
-        """Try ChromaDB first, then filesystem."""
-        # 1. ChromaDB
-        try:
-            from app.core.vector_store import get_chroma_client
-            collection_name = f"repo_{str(repo_id).replace('-', '_')}"
-            client = get_chroma_client()
-            collection = client.get_collection(name=collection_name)
-            res = collection.get(
-                where={"path": filename},
-                include=["documents", "metadatas"],
-                limit=100,
-            )
-            docs = res.get("documents") or []
-            metas = res.get("metadatas") or []
-            if docs:
-                paired = sorted(zip(docs, metas), key=lambda x: int((x[1] or {}).get("chunk_index", 0)))
-                return "".join(d for d, _ in paired if d)
-        except Exception:
-            pass
-
-        # 2. Filesystem fallback
-        try:
-            from app.agents.nodes.git_cloner import get_clone_path
-            clone_path = get_clone_path(str(repo_id))
-            fpath = os.path.join(clone_path, filename)
-            if os.path.isfile(fpath):
-                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                    return f.read()
-        except Exception:
-            pass
-        return None
+        # Never fall back to Chroma for manifests - they need to be valid and un-truncated!
+        content, _ = await get_file_content_from_source(str(repo_id), filename, allow_chroma_fallback=False)
+        return content
 
     manifests = []
 
