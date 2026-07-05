@@ -478,17 +478,66 @@ async def get_repo_dependencies(
             pass
 
     # ── requirements.txt (Python) ──────────────────────────────────────────
+    # Handles: name, name[extras], nameOP version, "; env-marker", inline
+    # comments, editable installs (-e ...), VCS/URL installs (git+…, https://…),
+    # and config directives (-r, -c, --index-url, …) which are not dependencies.
     req_text = await get_file_text("requirements.txt")
     if req_text:
         try:
             deps = []
-            for line in req_text.splitlines():
-                line = line.strip()
+            for raw_line in req_text.splitlines():
+                line = raw_line.strip()
                 if not line or line.startswith("#"):
                     continue
-                m = re.match(r'^([A-Za-z0-9_\-\.]+)\s*([><=!~^]+.+)?$', line)
+
+                # Editable installs ("-e .", "-e .[dev]", "-e git+…#egg=…") —
+                # must be handled before the inline-comment strip below, since
+                # the '#' in "#egg=" is meaningful for these directives.
+                if line.startswith("-e "):
+                    target = line[3:].strip()
+                    cand = (
+                        target.split("#egg=")[-1].split("[")[0]
+                        .split("=")[0].split("@")[0].strip()
+                    )
+                    name = (cand or target)[:60]
+                    deps.append({"name": name, "version": "", "type": "editable"})
+                    continue
+
+                # VCS / URL installs (git+…, hg+…, https://…). May contain
+                # "#egg=…"; treated intact here, before the comment strip below.
+                if line.startswith(("git+", "hg+", "svn+", "bzr+", "http://", "https://")):
+                    cand = line.split("#egg=")[-1].split("[")[0].split("&")[0].strip()
+                    name = (cand or line)[:80]
+                    deps.append({"name": name, "version": "", "type": "vcs"})
+                    continue
+
+                # Config directives (-r/--requirement, -c/--constraint, index
+                # URLs, --find-links, …) are not dependencies — skip intentionally.
+                if line.startswith((
+                    "-r", "--requirement", "-c", "--constraint",
+                    "-f", "--find-links", "-i", "--index-url",
+                    "--extra-index-url", "--no-index", "--pre",
+                    "--trusted-host", "--hash",
+                )):
+                    continue
+
+                # Plain package spec: strip inline comments before matching.
+                if "#" in line:
+                    line = line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+
+                # name[extras] <OP version> ; env-marker   (extras + marker optional)
+                m = re.match(
+                    r'^([A-Za-z0-9_][A-Za-z0-9_\-\.]*(?:\[[^\]]+\])?)'
+                    r'\s*([><=!~^][^;]*)?'
+                    r'\s*(;.*)?$',
+                    line,
+                )
                 if m:
-                    deps.append({"name": m.group(1), "version": (m.group(2) or "").strip(), "type": "runtime"})
+                    name = m.group(1).strip()
+                    version = (m.group(2) or "").strip()
+                    deps.append({"name": name, "version": version, "type": "runtime"})
             if deps:
                 manifests.append({"file": "requirements.txt", "ecosystem": "pip", "dependencies": deps})
         except Exception:
@@ -549,10 +598,30 @@ async def get_repo_dependencies(
         except Exception:
             pass
 
+    # Distinguish "repo genuinely has no manifests" (clone present, none found)
+    # from "we couldn't read them because the on-disk clone is gone" (recoverable
+    # by re-running analysis). PR 1 made the filesystem the source of truth and
+    # disabled Chroma fallback for manifests, so a missing clone means the files
+    # are unreadable rather than truly absent. The frontend's dependencies page
+    # has a dedicated "clone_missing" message that prompts the user to re-run
+    # analysis; re-emitting that status here keeps that branch reachable.
+    if not manifests:
+        try:
+            import os
+            from app.agents.nodes.git_cloner import get_clone_path
+            clone_present = os.path.isdir(get_clone_path(str(repo_id)))
+        except Exception:
+            # If we can't inspect the filesystem, assume the clone is present so
+            # we don't mislead with a "clone_missing" status.
+            clone_present = True
+        status = "clone_missing" if not clone_present else "no_manifests_found"
+    else:
+        status = "complete"
+
     return {
         "manifests": manifests,
         "total_manifests": len(manifests),
-        "status": "complete" if manifests else "no_manifests_found",
+        "status": status,
     }
 
 
