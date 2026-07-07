@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  # ── RepoHawk API (Production) ──────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: repohawk_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - chroma_db:/app/chroma_db
+      - chroma_data:/app/chroma_data
+    restart: unless-stopped
+
+volumes:
+  chroma_db:
+  chroma_data:

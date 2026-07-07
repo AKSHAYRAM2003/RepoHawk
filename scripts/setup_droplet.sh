@@ -88,5 +88,5 @@ echo "2. Make sure you mapped the 'api.repohawk.app' DNS A-record to this Drople
 echo ""
 echo "3. Start the containers:"
 echo "   cd $REPO_DIR"
-echo "   docker compose up -d"
+echo "   docker compose -f docker-compose.prod.yml up -d"
 echo "========================================="
