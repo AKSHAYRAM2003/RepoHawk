@@ -32,16 +32,24 @@ export default function DashboardPage() {
   const [deletingRepoId, setDeletingRepoId] = useState<string | null>(null);
   const router = useRouter();
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const fetchRepos = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
-      const res = await fetch("/api/repos");
+      const res = await fetch("/api/repos", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setRepos(data);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error("API error:", res.status, errData);
+        setErrorMsg(`Error ${res.status}: ${errData.error || errData.detail || "Failed to fetch"}`);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Network error:", err);
+      setErrorMsg(err.message || "Network error");
     } finally {
       setLoading(false);
     }
@@ -212,6 +220,26 @@ export default function DashboardPage() {
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: "color-mix(in srgb, var(--primary) 25%, transparent)", borderTopColor: "var(--primary)" }} />
             <p className="text-on-surface-variant text-sm font-medium">Loading repositories...</p>
+          </div>
+
+        ) : errorMsg ? (
+          /* Error state */
+          <div className="flex flex-col items-center justify-center py-24 px-8 rounded-3xl border-2 border-dashed border-rose-500/50 bg-rose-500/5 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-rose-500/10">
+              <AlertCircle className="w-6 h-6 text-rose-500" />
+            </div>
+            <div>
+              <p className="text-on-surface font-bold text-base">Failed to load repositories</p>
+              <p className="text-rose-500 text-xs mt-1.5 max-w-xs mx-auto leading-relaxed font-mono">
+                {errorMsg}
+              </p>
+            </div>
+            <button
+              onClick={fetchRepos}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-all mt-2 cursor-pointer"
+            >
+              <RefreshCw size={13} /> Try Again
+            </button>
           </div>
 
         ) : filteredRepos.length === 0 ? (
