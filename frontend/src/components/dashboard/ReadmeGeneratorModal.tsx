@@ -29,7 +29,7 @@ export default function ReadmeGeneratorModal({
   const abortRef = useRef<() => void>(() => {});
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8003";
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
   const startGeneration = useCallback(() => {
     setPhase("generating");

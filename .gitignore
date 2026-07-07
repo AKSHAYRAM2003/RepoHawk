@@ -45,9 +45,15 @@ htmlcov/
 .env.development.local
 .env.test.local
 .env.production.local
+chroma_db/
 chroma_data/
+chroma.log
 postgres_data/
 alembic.ini
+
+# Claude Code
+.claude/
+CLAUDE.md
 
 # OS & IDE
 .DS_Store

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8003/api/v1";
+const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000/api/v1";
 
 export async function POST(req: Request) {
   let body: any;

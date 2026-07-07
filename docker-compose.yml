@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: repohawk_postgres
@@ -18,9 +19,29 @@ services:
       timeout: 5s
       retries: 5
 
-# NOTE: ChromaDB is not run as a service. RepoHawk uses an embedded, on-disk
-# ChromaDB PersistentClient (backend/chroma_db/), so no Chroma server container
-# is required. This also avoids a port collision with the API on :8000.
+  # ── RepoHawk API ───────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: repohawk_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - chroma_db:/app/chroma_db
+      - chroma_data:/app/chroma_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+# NOTE: ChromaDB is not run as a separate service. RepoHawk uses an embedded,
+# on-disk ChromaDB PersistentClient (backend/chroma_db/), so no Chroma server
+# container is required.
 
 volumes:
   postgres_data:
+  chroma_db:
+  chroma_data:

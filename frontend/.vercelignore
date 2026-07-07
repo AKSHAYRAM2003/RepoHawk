@@ -1,0 +1,20 @@
+# Vercel build — files to exclude from upload
+# (Vercel only needs source code; everything else bloats the upload)
+
+# Node modules (Vercel installs fresh)
+node_modules/
+
+# Next.js build output (Vercel builds fresh)
+.next/
+
+# Local env files (never upload secrets)
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Type check build info (regenerated on build)
+*.tsbuildinfo
+
+# OS artifacts
+.DS_Store

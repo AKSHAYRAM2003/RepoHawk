@@ -31,7 +31,44 @@ def _validate_config():
         )
 
 # ── CORS origins ─────────────────────────────────────────────────────────────
-_origins = [settings.FRONTEND_URL]
+# FastAPI's CORSMiddleware does not support wildcard sub-domains (e.g. *.vercel.app).
+# We build an explicit list of patterns covering:
+#   1. Production: https://repohawk.app  and  https://www.repohawk.app
+#   2. FRONTEND_URL env var (DigitalOcean preview / staging)
+#   3. Vercel preview deployments: https://repohawk-git-*.vercel.app
+#   4. Local development: http://localhost:3000  and  http://127.0.0.1:3000
+import re as _re
+
+_ALLOWED_ORIGIN_PATTERNS = [
+    _re.compile(r"^https://repohawk\.app$"),
+    _re.compile(r"^https://www\.repohawk\.app$"),
+    _re.compile(r"^https://api\.repohawk\.app$"),
+    _re.compile(r"^https://repohawk(-git-[a-z0-9\-]+)?-akshayram\.vercel\.app$"),
+    _re.compile(r"^https://repohawk[a-z0-9\-]*\.vercel\.app$"),
+    _re.compile(r"^http://localhost(:\d+)?$"),
+    _re.compile(r"^http://127\.0\.0\.1(:\d+)?$"),
+]
+
+# Also always allow the explicit FRONTEND_URL env var (covers staging / custom)
+_FRONTEND_URL_EXPLICIT = settings.FRONTEND_URL
+
+
+def _is_allowed_origin(origin: str) -> bool:
+    if origin == _FRONTEND_URL_EXPLICIT:
+        return True
+    return any(pat.match(origin) for pat in _ALLOWED_ORIGIN_PATTERNS)
+
+# Build the list passed to CORSMiddleware — include known-static URLs plus a
+# sentinel so FastAPI's built-in allow_origins doesn't short-circuit everything.
+# The real per-request gate is allow_origin_regex (set below).
+_origins = [
+    "https://repohawk.app",
+    "https://www.repohawk.app",
+    _FRONTEND_URL_EXPLICIT,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 
 
 @asynccontextmanager
@@ -72,13 +109,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="RepoHawk API", version="1.0.0", lifespan=lifespan)
 
 # Security and CORS setup
+# allow_origins covers production + localhost (static, fast path)
+# allow_origin_regex covers Vercel preview deployments (dynamic sub-domains)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=r"https://repohawk[a-z0-9\-]*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Include core routers
 app.include_router(repos.router, prefix="/api/v1")
