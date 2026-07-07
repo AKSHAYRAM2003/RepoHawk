@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 const publicPaths = ["/", "/auth/login", "/auth/signup", "/auth/forgot-password", "/auth/reset-password"];
 const privatePaths = ["/dashboard", "/new-repo", "/settings", "/repo"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("repohawk_access_token")?.value;
 
