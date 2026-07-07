@@ -167,6 +167,28 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Stats Cards */}
+      {!loading && repos.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-5 rounded-2xl border border-outline-variant bg-surface-low flex flex-col justify-center">
+            <p className="text-xs uppercase font-bold tracking-widest text-on-surface-variant opacity-70 mb-1.5">Total Indexed</p>
+            <p className="text-3xl font-extrabold text-on-surface">{repos.length}</p>
+          </div>
+          <div className="p-5 rounded-2xl border border-outline-variant bg-surface-low flex flex-col justify-center">
+            <p className="text-xs uppercase font-bold tracking-widest text-on-surface-variant opacity-70 mb-1.5">Successfully Analyzed</p>
+            <p className="text-3xl font-extrabold" style={{ color: "#10b981" }}>
+              {repos.filter(r => r.analysis_status === "complete").length}
+            </p>
+          </div>
+          <div className="p-5 rounded-2xl border border-outline-variant bg-surface-low flex flex-col justify-center">
+            <p className="text-xs uppercase font-bold tracking-widest text-on-surface-variant opacity-70 mb-1.5">Pending / Failed</p>
+            <p className="text-3xl font-extrabold" style={{ color: "#f59e0b" }}>
+              {repos.filter(r => r.analysis_status === "queued" || r.analysis_status === "running" || r.analysis_status === "failed").length}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Repositories list */}
       <div className="w-full space-y-6">
 

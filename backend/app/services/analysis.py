@@ -6,7 +6,7 @@ Handles the execution of the agentic analysis pipeline and database persistence.
 import uuid
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models.repo import Repo
@@ -56,6 +56,15 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
     current_task = asyncio.current_task()
     task_manager.register_task(str(repo_id), current_task)
 
+    async def _safe_commit(db):
+        """Commit and rollback the session if it fails so it stays usable."""
+        try:
+            await db.commit()
+        except Exception as commit_err:
+            logger.error(f"DB commit failed, rolling back: {commit_err}")
+            await db.rollback()
+            raise
+
     try:
         async with db_factory() as db:
             # 1. Fetch Repo
@@ -67,7 +76,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 return
 
             repo.analysis_status = "running"
-            await db.commit()
+            await _safe_commit(db)
 
             # 2. Invoke Analysis Graph
             initial_state = {
@@ -109,13 +118,13 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                                     current_logs = list(repo.logs or [])
                                     current_logs.append(event_data)
                                     repo.logs = current_logs
-                                    await db.commit()
+                                    await _safe_commit(db)
                             else:
                                 final_state[key] = val
 
                 if "error" in final_state and final_state["error"]:
                     repo.analysis_status = "failed"
-                    await db.commit()
+                    await _safe_commit(db)
                     # Publish failure status
                     event_data = {
                         "step": "pipeline_error",
@@ -126,7 +135,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                     current_logs = list(repo.logs or [])
                     current_logs.append(event_data)
                     repo.logs = current_logs
-                    await db.commit()
+                    await _safe_commit(db)
                     return
 
                 # 3. Create Diagram record
@@ -156,10 +165,10 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
 
                 # 4. Update Repo
                 repo.analysis_status = "complete"
-                repo.last_analyzed_at = datetime.now(timezone.utc)
+                repo.last_analyzed_at = datetime.utcnow()
                 repo.file_count = final_state.get("total_files", 0)
                 
-                await db.commit()
+                await _safe_commit(db)
 
                 # Publish completion status
                 final_event = {
@@ -171,9 +180,10 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 current_logs = list(repo.logs or [])
                 current_logs.append(final_event)
                 repo.logs = current_logs
-                await db.commit()
+                await _safe_commit(db)
 
             except asyncio.TimeoutError:
+                await db.rollback()
                 repo.analysis_status = "failed"
                 timeout_event = {
                     "step": "pipeline_error",
@@ -183,11 +193,12 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 current_logs = list(repo.logs or [])
                 current_logs.append(timeout_event)
                 repo.logs = current_logs
-                await db.commit()
+                await _safe_commit(db)
                 progress_manager.publish(str(repo_id), timeout_event)
 
             except asyncio.CancelledError:
                 # Handle cancellation explicitly
+                await db.rollback()
                 repo.analysis_status = "failed"
                 cancel_event = {
                     "step": "pipeline_cancelled",
@@ -197,14 +208,16 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 current_logs = list(repo.logs or [])
                 current_logs.append(cancel_event)
                 repo.logs = current_logs
-                await db.commit()
+                await _safe_commit(db)
                 progress_manager.publish(str(repo_id), cancel_event)
                 raise
 
             except Exception as e:
                 import traceback
-                logger.error(f"Analysis failed for {repo.id}: {str(e)}")
+                logger.error(f"Analysis pipeline error: {str(e)}")
                 logger.error(traceback.format_exc())
+                # Rollback any broken transaction before writing failure status
+                await db.rollback()
                 repo.analysis_status = "failed"
                 error_event = {
                     "step": "pipeline_error",
@@ -214,7 +227,7 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 current_logs = list(repo.logs or [])
                 current_logs.append(error_event)
                 repo.logs = current_logs
-                await db.commit()
+                await _safe_commit(db)
                 progress_manager.publish(str(repo_id), error_event)
     finally:
         task_manager.unregister_task(str(repo_id))
