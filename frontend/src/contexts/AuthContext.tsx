@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Login failed");
     setUser(data.user);
-    router.push("/dashboard");
+    router.push(`/dashboard/${data.user.id}`);
   }, [router]);
 
   const signup = useCallback(async (name: string, email: string, password: string) => {

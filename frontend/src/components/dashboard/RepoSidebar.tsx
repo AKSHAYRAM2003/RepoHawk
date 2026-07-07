@@ -106,8 +106,8 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         name: "My Repositories", 
         icon: FolderGit2,
         subItems: [
-          { name: "Dashboard", href: "/dashboard", icon: FolderGit2 },
-          { name: "New Repo", href: "/new-repo", icon: Plus }
+          { name: "Dashboard", href: `/dashboard/${user?.id || ""}`, icon: FolderGit2 },
+          { name: "New Repo", href: `/new-repo/${user?.id || ""}`, icon: Plus }
         ]
       },
       { name: "Global Search", href: "#", icon: Search, action: "cmd-k" }

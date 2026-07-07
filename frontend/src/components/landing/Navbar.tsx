@@ -45,7 +45,7 @@ export default function Navbar() {
                   <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)} />
                   <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-outline-variant bg-surface-container-high shadow-lg z-50 overflow-hidden">
                     <div className="p-2">
-                      <Link href="/dashboard" onClick={() => setIsProfileOpen(false)} className="flex items-center gap-3 px-3 py-2 text-sm text-on-surface hover-surface rounded-lg transition-colors">
+                      <Link href={`/dashboard/${user?.id || ""}`} onClick={() => setIsProfileOpen(false)} className="flex items-center gap-3 px-3 py-2 text-sm text-on-surface hover-surface rounded-lg transition-colors">
                         <LayoutDashboard size={16} className="text-on-surface-variant" /> Dashboard
                       </Link>
                       <button onClick={() => setIsProfileOpen(false)} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-on-surface hover-surface rounded-lg transition-colors">
@@ -92,7 +92,7 @@ export default function Navbar() {
         <div className="absolute top-full left-4 right-4 mt-2 p-6 rounded-3xl bg-white/95 dark:bg-[#121215]/95 backdrop-blur-3xl border border-black/5 dark:border-white/10 shadow-2xl md:hidden flex flex-col gap-8">
           <div className="flex flex-col gap-6">
             {isAuthenticated ? (
-              <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="text-gray-800 dark:text-gray-300 hover:text-primary transition-colors text-xl font-headline font-semibold">Dashboard</Link>
+              <Link href={`/dashboard/${user?.id || ""}`} onClick={() => setIsMobileMenuOpen(false)} className="text-gray-800 dark:text-gray-300 hover:text-primary transition-colors text-xl font-headline font-semibold">Dashboard</Link>
             ) : (
               <>
                 <a href="#" onClick={() => setIsMobileMenuOpen(false)} className="text-gray-800 dark:text-gray-300 hover:text-primary transition-colors text-xl font-headline font-semibold">About</a>
