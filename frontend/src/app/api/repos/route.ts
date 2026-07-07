@@ -5,7 +5,7 @@ const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000/api/v1";
 export async function GET(req: Request) {
   try {
     const cookie = req.headers.get("cookie") || "";
-    const response = await fetch(`${FASTAPI_URL}/repos`, {
+    const response = await fetch(`${FASTAPI_URL}/repos/`, {
       method: "GET",
       cache: "no-store",
       headers: { Cookie: cookie },
