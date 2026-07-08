@@ -26,13 +26,17 @@ import {
   Bell,
   Shield,
   FileText,
-  GitBranch
+  GitBranch,
+  Globe,
+  CheckCircle,
+  Loader2
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import ReadmeGeneratorModal from "./ReadmeGeneratorModal";
 import SearchModal from "./SearchModal";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import NotificationToggle from "@/components/notifications/NotificationToggle";
 
 
 interface RepoSidebarProps {
@@ -70,6 +74,10 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [isReadmeModalOpen, setIsReadmeModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
+  const [githubConnected, setGitHubConnected] = useState(false);
+  const [githubLogin, setGitHubLogin] = useState("");
+  const [reposCount, setReposCount] = useState(0);
+  const [githubLoading, setGitHubLoading] = useState(false);
   const { resolvedTheme, theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
 
@@ -101,6 +109,23 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
       }
     }
   }, [repoId, activeRepoId]);
+
+  // Fetch GitHub connection status for the settings modal
+  useEffect(() => {
+    if (!isSettingsModalOpen) return;
+    setGitHubLoading(true);
+    fetch("/api/github/status", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        setGitHubConnected(data.connected);
+        if (data.connected && data.installation) {
+          setGitHubLogin(data.installation.account_login);
+          setReposCount(data.installation.repos?.length || 0);
+        }
+      })
+      .catch(() => setGitHubConnected(false))
+      .finally(() => setGitHubLoading(false));
+  }, [isSettingsModalOpen]);
 
   const menuItems: MenuGroup[] = [
     { section: "Overview", items: [
@@ -675,29 +700,51 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                       </div>
                     </div>
 
-                    <div className="p-5 rounded-2xl border border-outline-variant space-y-4"
+                    <div className="p-5 rounded-2xl border border-outline-variant"
                       style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 mb-4">
                         <GitBranch size={18} style={{ color: "var(--primary)" }} />
                         <div>
                           <p className="text-sm font-bold text-on-surface">GitHub Connection</p>
                           <p className="text-xs text-on-surface-variant">Connect your GitHub account to enable auto-discovery and webhook events</p>
                         </div>
                       </div>
-                      <a
-                        href="https://github.com/apps/repohawk/installations/new"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer"
-                        style={{
-                          background: "linear-gradient(135deg, #4a50c5, #00b08a)",
-                          color: "white",
-                        }}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                        Connect GitHub
-                      </a>
+
+                      {githubLoading ? (
+                        <div className="flex items-center justify-center py-6">
+                          <Loader2 size={18} className="animate-spin" style={{ color: "var(--primary)" }} />
+                        </div>
+                      ) : githubConnected ? (
+                        <div className="p-4 rounded-xl border border-outline-variant bg-surface-low flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#4a50c5] to-[#00b08a] flex items-center justify-center shrink-0">
+                            <CheckCircle size={20} className="text-white" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Globe size={13} style={{ color: "#10b981" }} />
+                              <p className="text-sm font-bold text-on-surface">Connected</p>
+                            </div>
+                            <p className="text-xs text-on-surface-variant mt-0.5">
+                              Signed in as <strong>{githubLogin}</strong> &middot; {reposCount} repos
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <a
+                          href="https://github.com/apps/repohawk/installations/new"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                          style={{
+                            background: "linear-gradient(135deg, #4a50c5, #00b08a)",
+                            color: "white",
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                          Connect GitHub
+                        </a>
+                      )}
                     </div>
                   </section>
                 )}
