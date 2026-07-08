@@ -38,6 +38,8 @@ class UserResponse(BaseModel):
     email: str
     name: Optional[str] = None
     is_verified: bool
+    github_id: Optional[int] = None
+    github_username: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:

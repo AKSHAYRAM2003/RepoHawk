@@ -50,15 +50,14 @@ async def handle_installation_created(
     sender_id: int,
     repos: list[dict],
 ) -> Optional[GitHubInstallation]:
-    result = await db.execute(select(User))
-    users = result.scalars().all()
-    if not users:
-        logger.error("No users found — cannot link GitHub installation")
+    # Match installation to the RepoHawk user who linked their GitHub account
+    result = await db.execute(
+        select(User).where(User.github_username == account_login)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        logger.warning(f"No user found with github_username={account_login} — installation {installation_id} not linked to any account")
         return None
-
-    user = users[0]
-    if len(users) > 1:
-        logger.warning(f"Multiple users ({len(users)}) — linking install to first user")
 
     existing = await get_installation_by_install_id(db, installation_id)
     if existing:

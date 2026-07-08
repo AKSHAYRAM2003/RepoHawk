@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     RESEND_WELCOME_TEMPLATE_ID: str = ""
     RESEND_PASSWORD_RESET_TEMPLATE_ID: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
+    API_URL: str = "http://localhost:8000"
 
     # GitHub App
     GITHUB_APP_ID: str = ""

@@ -8,6 +8,8 @@ interface User {
   email: string;
   name: string | null;
   is_verified: boolean;
+  github_id: number | null;
+  github_username: string | null;
   created_at: string;
 }
 

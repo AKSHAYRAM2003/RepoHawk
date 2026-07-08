@@ -1,5 +1,9 @@
 import uuid
 import logging
+import httpx
+import jwt as pyjwt
+import time
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -133,3 +137,122 @@ async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depen
     if not ok:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     return MessageResponse(message="Password reset successfully")
+
+
+# ── GitHub OAuth linking ─────────────────────────────────────────────────────
+
+class GitHubOAuthUrlResponse(BaseModel):
+    url: str
+
+from pydantic import BaseModel
+
+
+@router.get("/github/url")
+async def github_oauth_url(
+    user: User = Depends(get_current_user),
+):
+    """Generate a GitHub OAuth URL for linking the user's GitHub account."""
+    if not settings.GITHUB_APP_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
+
+    state = pyjwt.encode(
+        {"sub": str(user.id), "exp": int(time.time()) + 600},
+        settings.JWT_SECRET_KEY,
+        algorithm="HS256",
+    )
+    redirect_uri = f"{settings.API_URL}/api/v1/auth/github/callback" if hasattr(settings, 'API_URL') else None
+    params = {
+        "client_id": settings.GITHUB_APP_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "state": state,
+        "scope": "user:email",
+    }
+    query = "&".join(f"{k}={v}" for k, v in params.items() if v)
+    url = f"https://github.com/login/oauth/authorize?{query}"
+    return GitHubOAuthUrlResponse(url=url)
+
+
+@router.get("/github/callback")
+async def github_oauth_callback(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+):
+    """Handle GitHub OAuth callback — exchange code, store user info, redirect to settings."""
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+
+    # Verify state token and identify the user
+    try:
+        state_data = pyjwt.decode(state or "", settings.JWT_SECRET_KEY, algorithms=["HS256"])
+        user_id = state_data.get("sub")
+    except Exception as e:
+        logger.warning(f"Invalid OAuth state: {e}")
+        raise HTTPException(status_code=400, detail="Invalid state parameter")
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid state payload")
+
+    # Exchange code for access token
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            "https://github.com/login/oauth/access_token",
+            data={
+                "client_id": settings.GITHUB_APP_CLIENT_ID,
+                "client_secret": settings.GITHUB_APP_CLIENT_SECRET,
+                "code": code,
+            },
+            headers={"Accept": "application/json"},
+        )
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="GitHub OAuth token exchange failed")
+
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="No access_token in GitHub response")
+
+        # Fetch the user's GitHub profile
+        user_resp = await client.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github.v3+json",
+            },
+        )
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to fetch GitHub profile")
+
+        github_user = user_resp.json()
+
+    # Update the user record
+    from sqlalchemy import select
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.github_id = github_user.get("id")
+    user.github_username = github_user.get("login")
+    user.github_access_token = access_token
+    await db.commit()
+
+    # Redirect to frontend settings page
+    redirect_url = f"{settings.FRONTEND_URL}/settings?github_linked=1"
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.post("/github/unlink")
+async def github_unlink(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unlink the user's GitHub account."""
+    current_user.github_id = None
+    current_user.github_username = None
+    current_user.github_access_token = None
+    await db.commit()
+    return MessageResponse(message="GitHub account unlinked")
