@@ -75,7 +75,7 @@ async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         account = installation_data.get("account", {})
         sender = data.get("sender", {})
 
-        if action == "created":
+        if action in ("created", "new_permissions_accepted"):
             await github_service.handle_installation_created(
                 db,
                 installation_id=install_id,
@@ -83,15 +83,21 @@ async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 account_type=account.get("type", "User"),
                 account_avatar_url=account.get("avatar_url"),
                 sender_id=sender.get("id"),
-                repos=data.get("repositories", []),
+                repos=installation_data.get("repositories", data.get("repositories", [])),
             )
         elif action == "deleted":
             await github_service.handle_installation_deleted(db, install_id)
-        elif action == "repositories_added":
+
+    elif event == "installation_repositories":
+        action = data.get("action")
+        installation_data = data.get("installation", {})
+        install_id = installation_data.get("id")
+
+        if action == "added":
             await github_service.handle_repositories_added(
                 db, install_id, data.get("repositories_added", [])
             )
-        elif action == "repositories_removed":
+        elif action == "removed":
             await github_service.handle_repositories_removed(
                 db, install_id, data.get("repositories_removed", [])
             )
