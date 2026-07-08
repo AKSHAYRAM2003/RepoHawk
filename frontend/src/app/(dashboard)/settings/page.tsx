@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sun, Moon, Monitor, Settings2, Palette, GitBranch, Globe, CheckCircle, XCircle, Loader2, Bell } from "lucide-react";
+import { Sun, Moon, Monitor, Settings2, Palette, GitBranch, Globe, CheckCircle, Loader2, Bell } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import NotificationToggle from "@/components/notifications/NotificationToggle";
 

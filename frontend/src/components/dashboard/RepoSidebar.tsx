@@ -178,7 +178,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         >
           {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
-        {!isCollapsed && <NotificationBell />}
+        <NotificationBell />
       </div>
 
       {/* Nav groups */}

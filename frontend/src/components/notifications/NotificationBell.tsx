@@ -91,7 +91,7 @@ export default function NotificationBell() {
 
       {isOpen && (
         <div
-          className="absolute right-0 mt-2 w-[380px] rounded-2xl border overflow-hidden shadow-2xl"
+          className="absolute left-0 mt-2 w-[380px] max-w-[90vw] rounded-2xl border overflow-hidden shadow-2xl"
           style={{
             backgroundColor: "var(--surface-container-high)",
             borderColor: "var(--outline-variant)",
