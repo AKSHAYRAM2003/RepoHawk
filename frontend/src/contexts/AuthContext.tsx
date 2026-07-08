@@ -54,6 +54,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { fetchUser(); }, [fetchUser]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("github_linked")) {
+      params.delete("github_linked");
+      const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
+      window.history.replaceState({}, "", newUrl);
+      fetchUser();
+    }
+  }, [fetchUser]);
+
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
