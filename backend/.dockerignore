@@ -28,7 +28,7 @@ tests/
 # Docs & logs
 *.md
 *.log
-alembic.ini
+# alembic.ini removed — required in image for migration on startup
 
 # OS
 .DS_Store

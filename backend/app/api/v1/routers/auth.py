@@ -5,6 +5,7 @@ import time
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from jose import jwt
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.config import settings
@@ -143,8 +144,6 @@ async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depen
 
 class GitHubOAuthUrlResponse(BaseModel):
     url: str
-
-from pydantic import BaseModel
 
 
 @router.get("/github/url")
