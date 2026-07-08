@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sun, Moon, Monitor, Settings2, Palette, GitBranch, Globe, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Sun, Moon, Monitor, Settings2, Palette, GitBranch, Globe, CheckCircle, XCircle, Loader2, Bell } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
+import NotificationToggle from "@/components/notifications/NotificationToggle";
 
 interface GitHubStatus {
   connected: boolean;
@@ -270,21 +271,66 @@ export default function SettingsPage() {
 
       {/* Notifications Tab */}
       {activeTab === "notifications" && (
-        <section className="space-y-4 opacity-50">
-          <div className="flex items-center gap-3">
+        <section className="space-y-6 max-w-2xl">
+          <div className="flex items-center gap-3 pb-4 border-b border-outline-variant">
             <div
               className="w-8 h-8 rounded-xl flex items-center justify-center"
-              style={{ background: "color-mix(in srgb, var(--on-surface) 8%, transparent)", color: "var(--on-surface-variant)" }}
+              style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", color: "var(--primary)" }}
             >
-              <Settings2 size={16} />
+              <Bell size={16} />
             </div>
             <div>
               <h2 className="text-sm font-bold text-on-surface">Notifications</h2>
-              <p className="text-xs text-on-surface-variant">Notification preferences coming soon</p>
+              <p className="text-xs text-on-surface-variant">Manage your notification preferences.</p>
             </div>
           </div>
-          <div className="p-4 rounded-2xl border border-dashed border-outline-variant text-xs text-on-surface-variant text-center">
-            Configure notification preferences from the sidebar settings panel.
+
+          <div className="space-y-1">
+            <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Events</p>
+            <div className="space-y-3 mt-3">
+              <NotificationToggle
+                label="Push events"
+                desc="Notify when new code is pushed to a connected repo"
+                defaultChecked={false}
+              />
+              <NotificationToggle
+                label="Pull requests"
+                desc="Architecture impact summaries for new PRs"
+                defaultChecked={false}
+              />
+              <NotificationToggle
+                label="Analysis complete"
+                desc="When a repo analysis finishes successfully"
+                defaultChecked={true}
+              />
+              <NotificationToggle
+                label="Analysis failed"
+                desc="When a repo analysis encounters an error"
+                defaultChecked={true}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase mt-6">Channels</p>
+            <div className="space-y-3 mt-3">
+              <NotificationToggle
+                label="In-app"
+                desc="Notifications appear in this panel"
+                defaultChecked={true}
+              />
+              <NotificationToggle
+                label="Email"
+                desc="Send notifications to your email"
+                defaultChecked={false}
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 p-4 rounded-xl border border-outline-variant" style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}>
+            <p className="text-xs text-on-surface-variant">
+              Connect your GitHub account from the <strong className="text-on-surface">GitHub</strong> tab to enable push and PR notifications.
+            </p>
           </div>
         </section>
       )}
