@@ -1,10 +1,10 @@
 import uuid
 import logging
 import httpx
-import jwt as pyjwt
 import time
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.config import settings
@@ -155,7 +155,7 @@ async def github_oauth_url(
     if not settings.GITHUB_APP_CLIENT_ID:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
 
-    state = pyjwt.encode(
+    state = jwt.encode(
         {"sub": str(user.id), "exp": int(time.time()) + 600},
         settings.JWT_SECRET_KEY,
         algorithm="HS256",
@@ -186,7 +186,7 @@ async def github_oauth_callback(
 
     # Verify state token and identify the user
     try:
-        state_data = pyjwt.decode(state or "", settings.JWT_SECRET_KEY, algorithms=["HS256"])
+        state_data = jwt.decode(state or "", settings.JWT_SECRET_KEY, algorithms=["HS256"])
         user_id = state_data.get("sub")
     except Exception as e:
         logger.warning(f"Invalid OAuth state: {e}")
