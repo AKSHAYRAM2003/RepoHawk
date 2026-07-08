@@ -19,6 +19,8 @@ class User(Base):
     repos = relationship("Repo", back_populates="user")
     diagrams = relationship("Diagram", back_populates="user")
     chat_sessions = relationship("ChatSession", back_populates="user")
+    github_installations = relationship("GitHubInstallation", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
 
 class PasswordResetToken(Base):

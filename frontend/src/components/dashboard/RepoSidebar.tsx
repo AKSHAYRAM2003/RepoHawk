@@ -25,12 +25,14 @@ import {
   Settings2,
   Bell,
   Shield,
-  FileText
+  FileText,
+  GitBranch
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import ReadmeGeneratorModal from "./ReadmeGeneratorModal";
 import SearchModal from "./SearchModal";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 
 interface RepoSidebarProps {
@@ -176,6 +178,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         >
           {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
+        {!isCollapsed && <NotificationBell />}
       </div>
 
       {/* Nav groups */}
@@ -569,13 +572,136 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                   </section>
                 )}
                 
-                {settingsTab !== "appearance" && (
-                  <div className="h-full flex flex-col items-center justify-center text-on-surface-variant opacity-60">
-                    <Settings2 size={48} className="mb-4 opacity-50" />
-                    <h3 className="text-lg font-bold text-on-surface mb-2 capitalize">{settingsTab}</h3>
-                    <p className="text-sm">These settings will be available soon.</p>
-                  </div>
+                {settingsTab === "notifications" && (
+                  <section className="space-y-6 max-w-2xl mx-auto">
+                    <div className="flex items-center gap-3 pb-4 border-b border-outline-variant">
+                      <Bell size={20} style={{ color: "var(--primary)" }} />
+                      <div>
+                        <h3 className="text-lg font-bold text-on-surface">Notifications</h3>
+                        <p className="text-sm text-on-surface-variant">Manage your notification preferences.</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Events</p>
+                      <div className="space-y-3 mt-3">
+                        <NotificationToggle
+                          label="Push events"
+                          desc="Notify when new code is pushed to a connected repo"
+                          defaultChecked={false}
+                        />
+                        <NotificationToggle
+                          label="Pull requests"
+                          desc="Architecture impact summaries for new PRs"
+                          defaultChecked={false}
+                        />
+                        <NotificationToggle
+                          label="Analysis complete"
+                          desc="When a repo analysis finishes successfully"
+                          defaultChecked={true}
+                        />
+                        <NotificationToggle
+                          label="Analysis failed"
+                          desc="When a repo analysis encounters an error"
+                          defaultChecked={true}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase mt-6">Channels</p>
+                      <div className="space-y-3 mt-3">
+                        <NotificationToggle
+                          label="In-app"
+                          desc="Notifications appear in this panel"
+                          defaultChecked={true}
+                        />
+                        <NotificationToggle
+                          label="Email"
+                          desc="Send notifications to your email"
+                          defaultChecked={false}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-6 p-4 rounded-xl border border-outline-variant" style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}>
+                      <p className="text-xs text-on-surface-variant">
+                        Connect your GitHub account from the <strong className="text-on-surface">General</strong> tab to enable push and PR notifications.
+                      </p>
+                    </div>
+                  </section>
                 )}
+
+                {settingsTab === "security" && (
+                  <section className="space-y-6 max-w-2xl mx-auto">
+                    <div className="flex items-center gap-3 pb-4 border-b border-outline-variant">
+                      <Shield size={20} style={{ color: "var(--primary)" }} />
+                      <div>
+                        <h3 className="text-lg font-bold text-on-surface">Security</h3>
+                        <p className="text-sm text-on-surface-variant">Manage your account security settings.</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 rounded-xl border border-outline-variant">
+                        <div>
+                          <p className="text-sm font-semibold text-on-surface">Password</p>
+                          <p className="text-xs text-on-surface-variant mt-0.5">Change your account password</p>
+                        </div>
+                        <button className="px-4 py-2 text-xs font-semibold rounded-xl border border-outline-variant text-on-surface hover-surface transition-all cursor-pointer">
+                          Update
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between p-4 rounded-xl border border-outline-variant">
+                        <div>
+                          <p className="text-sm font-semibold text-on-surface">Sessions</p>
+                          <p className="text-xs text-on-surface-variant mt-0.5">Manage active sessions</p>
+                        </div>
+                        <button className="px-4 py-2 text-xs font-semibold rounded-xl border border-outline-variant text-on-surface hover-surface transition-all cursor-pointer">
+                          View
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {settingsTab === "general" && (
+                  <section className="space-y-6 max-w-2xl mx-auto">
+                    <div className="flex items-center gap-3 pb-4 border-b border-outline-variant">
+                      <Settings2 size={20} style={{ color: "var(--primary)" }} />
+                      <div>
+                        <h3 className="text-lg font-bold text-on-surface">General</h3>
+                        <p className="text-sm text-on-surface-variant">Manage your GitHub connection and general preferences.</p>
+                      </div>
+                    </div>
+
+                    <div className="p-5 rounded-2xl border border-outline-variant space-y-4"
+                      style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <GitBranch size={18} style={{ color: "var(--primary)" }} />
+                        <div>
+                          <p className="text-sm font-bold text-on-surface">GitHub Connection</p>
+                          <p className="text-xs text-on-surface-variant">Connect your GitHub account to enable auto-discovery and webhook events</p>
+                        </div>
+                      </div>
+                      <a
+                        href="https://github.com/apps/repohawk/installations/new"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                        style={{
+                          background: "linear-gradient(135deg, #4a50c5, #00b08a)",
+                          color: "white",
+                        }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        Connect GitHub
+                      </a>
+                    </div>
+                  </section>
+                )}
+
               </div>
             </div>
           </div>

@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     RESEND_WELCOME_TEMPLATE_ID: str = ""
     RESEND_PASSWORD_RESET_TEMPLATE_ID: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
+
+    # GitHub App
+    GITHUB_APP_ID: str = ""
+    GITHUB_APP_PRIVATE_KEY: str = ""
+    GITHUB_WEBHOOK_SECRET: str = ""
+    GITHUB_APP_CLIENT_ID: str = ""
+    GITHUB_APP_CLIENT_SECRET: str = ""
     
     class Config:
         env_file = ".env"

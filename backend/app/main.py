@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # Bootstrap SQLAlchemy models registry to avoid InvalidRequestError
 from app.models.base import Base
 
-from app.api.v1.routers import repos, chat, auth
+from app.api.v1.routers import repos, chat, auth, github, notifications
 from app.core.config import settings
 
 # Configure logging
@@ -125,6 +125,8 @@ app.add_middleware(
 app.include_router(repos.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(github.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 
 
 @app.get("/")
