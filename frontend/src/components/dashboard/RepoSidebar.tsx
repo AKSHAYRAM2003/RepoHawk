@@ -80,6 +80,8 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [githubLoading, setGitHubLoading] = useState(false);
   const { resolvedTheme, theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [unlinkLoading, setUnlinkLoading] = useState(false);
 
   // Listen for global Cmd+K / Ctrl+K keyboard shortcut
   useEffect(() => {
@@ -708,14 +710,72 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                       </div>
                     </div>
 
+                    {/* GitHub Account Linking */}
+                    <div className="p-5 rounded-2xl border border-outline-variant"
+                      style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <GitBranch size={18} style={{ color: "var(--primary)" }} />
+                          <div>
+                            <p className="text-sm font-bold text-on-surface">Linked Account</p>
+                            <p className="text-xs text-on-surface-variant">
+                              {user?.github_username
+                                ? `Connected as @${user.github_username}`
+                                : "Link your GitHub identity to connect repos"
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {user?.github_username ? (
+                            <button
+                              onClick={async () => {
+                                setUnlinkLoading(true);
+                                try {
+                                  await fetch("/api/auth/github/unlink", { method: "POST" });
+                                  window.location.reload();
+                                } finally {
+                                  setUnlinkLoading(false);
+                                }
+                              }}
+                              disabled={unlinkLoading}
+                              className="px-4 py-2 text-xs font-bold rounded-xl border border-outline-variant text-on-surface-variant hover-surface transition-all"
+                            >
+                              {unlinkLoading ? "Unlinking..." : "Unlink"}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                setLinkLoading(true);
+                                try {
+                                  const res = await fetch(`/api/auth/github/url?return_url=${encodeURIComponent(window.location.pathname)}`);
+                                  const data = await res.json();
+                                  if (data.url) window.location.href = data.url;
+                                } finally {
+                                  setLinkLoading(false);
+                                }
+                              }}
+                              disabled={linkLoading}
+                              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all"
+                              style={{ background: "linear-gradient(135deg, #4a50c5, #00b08a)", color: "white" }}
+                            >
+                              {linkLoading ? "Redirecting..." : "Link GitHub Account"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* GitHub App Installation */}
                     <div className="p-5 rounded-2xl border border-outline-variant"
                       style={{ background: "color-mix(in srgb, var(--on-surface) 3%, transparent)" }}
                     >
                       <div className="flex items-center gap-3 mb-4">
                         <GitBranch size={18} style={{ color: "var(--primary)" }} />
                         <div>
-                          <p className="text-sm font-bold text-on-surface">GitHub Connection</p>
-                          <p className="text-xs text-on-surface-variant">Connect your GitHub account to enable auto-discovery and webhook events</p>
+                          <p className="text-sm font-bold text-on-surface">GitHub App</p>
+                          <p className="text-xs text-on-surface-variant">Install the GitHub App on your repositories for auto-discovery and webhook events</p>
                         </div>
                       </div>
 
@@ -750,7 +810,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                           }}
                         >
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                          Connect GitHub
+                          Install App
                         </a>
                       )}
                     </div>

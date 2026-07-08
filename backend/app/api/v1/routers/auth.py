@@ -149,13 +149,14 @@ class GitHubOAuthUrlResponse(BaseModel):
 @router.get("/github/url")
 async def github_oauth_url(
     user: User = Depends(get_current_user),
+    return_url: Optional[str] = "/settings",
 ):
     """Generate a GitHub OAuth URL for linking the user's GitHub account."""
     if not settings.GITHUB_APP_CLIENT_ID:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
 
     state = jwt.encode(
-        {"sub": str(user.id), "exp": int(time.time()) + 600},
+        {"sub": str(user.id), "return_url": return_url, "exp": int(time.time()) + 600},
         settings.JWT_SECRET_KEY,
         algorithm="HS256",
     )
@@ -187,6 +188,7 @@ async def github_oauth_callback(
     try:
         state_data = jwt.decode(state or "", settings.JWT_SECRET_KEY, algorithms=["HS256"])
         user_id = state_data.get("sub")
+        return_url = state_data.get("return_url", "/settings")
     except Exception as e:
         logger.warning(f"Invalid OAuth state: {e}")
         raise HTTPException(status_code=400, detail="Invalid state parameter")
@@ -238,8 +240,11 @@ async def github_oauth_callback(
     user.github_access_token = access_token
     await db.commit()
 
-    # Redirect to frontend settings page
-    redirect_url = f"{settings.FRONTEND_URL}/settings?github_linked=1"
+    # Redirect to frontend (preserve the page the user was on)
+    from urllib.parse import urlencode
+    params = urlencode({"github_linked": "1"})
+    sep = "&" if "?" in return_url else "?"
+    redirect_url = f"{settings.FRONTEND_URL}{return_url}{sep}{params}"
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url=redirect_url, status_code=303)
 
