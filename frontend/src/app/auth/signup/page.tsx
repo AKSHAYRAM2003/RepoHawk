@@ -174,7 +174,7 @@ export default function SignupPage() {
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
             className="w-full h-12 px-4 rounded-xl bg-surface-container-highest border border-outline-variant text-on-surface placeholder-on-surface-variant/60 outline-none focus:border-primary transition-colors text-sm" />
         </div>
-        <PasswordInput label="Password" value={password} onChange={setPassword} required />
+        <PasswordInput label="Password" value={password} onChange={setPassword} placeholder="Create a password" required />
         <button type="submit" disabled={loading}
           className="w-full h-12 rounded-xl bg-gradient-to-r from-[#4a50c5] to-[#00b08a] text-white font-bold text-sm hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50">
           {loading ? "Creating account..." : "Create account"}

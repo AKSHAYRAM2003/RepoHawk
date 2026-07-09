@@ -208,6 +208,7 @@ export default function SignupModal() {
                     label="Password"
                     value={password}
                     onChange={setPassword}
+                    placeholder="Create a password"
                     required
                   />
 
@@ -398,6 +399,7 @@ export default function SignupModal() {
                     label="Password"
                     value={loginPassword}
                     onChange={setLoginPassword}
+                    placeholder="Enter your password"
                     required
                   />
 

@@ -104,7 +104,7 @@ export default function LoginModal() {
                 placeholder="you@example.com"
               />
             </div>
-            <PasswordInput label="Password" value={password} onChange={setPassword} required />
+            <PasswordInput label="Password" value={password} onChange={setPassword} placeholder="Enter your password" required />
             
             <div className="text-right">
               <button

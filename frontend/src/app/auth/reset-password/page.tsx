@@ -263,6 +263,7 @@ export default function ResetPasswordPage() {
             label="New password"
             value={password}
             onChange={setPassword}
+            placeholder="Enter new password"
             required
           />
           <button

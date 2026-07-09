@@ -30,7 +30,9 @@ import {
   Globe,
   CheckCircle,
   Loader2,
-  Trash2
+  Trash2,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { sileo } from "sileo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -85,6 +87,8 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [isReadmeModalOpen, setIsReadmeModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [githubConnected, setGitHubConnected] = useState(false);
   const [githubLogin, setGitHubLogin] = useState("");
   const [reposCount, setReposCount] = useState(0);
@@ -832,24 +836,44 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                           >
                             <div>
                               <label className="block text-xs font-medium text-on-surface-variant mb-1.5">New password</label>
-                              <input
-                                type="password"
-                                value={passwordNew}
-                                onChange={(e) => setPasswordNew(e.target.value)}
-                                required
-                                minLength={6}
-                                className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
-                              />
+                              <div className="relative">
+                                <input
+                                  type={showPassword ? "text" : "password"}
+                                  value={passwordNew}
+                                  onChange={(e) => setPasswordNew(e.target.value)}
+                                  required
+                                  minLength={6}
+                                  placeholder="Enter new password"
+                                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 pr-10 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowPassword(!showPassword)}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                                >
+                                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Confirm new password</label>
-                              <input
-                                type="password"
-                                value={passwordConfirm}
-                                onChange={(e) => setPasswordConfirm(e.target.value)}
-                                required
-                                className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
-                              />
+                              <div className="relative">
+                                <input
+                                  type={showConfirm ? "text" : "password"}
+                                  value={passwordConfirm}
+                                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                                  required
+                                  placeholder="Re-enter new password"
+                                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 pr-10 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowConfirm(!showConfirm)}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                                >
+                                  {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
                             </div>
                             <div className="flex justify-end gap-3 pt-1">
                               <button

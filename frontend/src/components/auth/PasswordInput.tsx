@@ -6,10 +6,11 @@ interface Props {
   value: string;
   onChange: (v: string) => void;
   label: string;
+  placeholder?: string;
   required?: boolean;
 }
 
-export default function PasswordInput({ value, onChange, label, required }: Props) {
+export default function PasswordInput({ value, onChange, label, placeholder, required }: Props) {
   const [visible, setVisible] = useState(false);
 
   const toggle = () => {
@@ -24,6 +25,7 @@ export default function PasswordInput({ value, onChange, label, required }: Prop
           type={visible ? "text" : "password"}
           required={required}
           value={value}
+          placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
           className="w-full h-12 px-4 pr-12 rounded-xl bg-surface-container-highest border border-outline-variant text-on-surface placeholder-on-surface-variant/60 outline-none focus:border-primary transition-colors text-sm"
         />
