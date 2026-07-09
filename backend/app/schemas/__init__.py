@@ -26,6 +26,7 @@ class ResetPasswordRequest(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     name: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -40,6 +41,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     github_id: Optional[int] = None
     github_username: Optional[str] = None
+    avatar_url: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:
@@ -94,6 +96,20 @@ class UpdateNotificationPreferenceRequest(BaseModel):
     analysis_failed: Optional[bool] = None
     in_app: Optional[bool] = None
     email: Optional[bool] = None
+
+
+# ── Sessions ──────────────────────────────────────────────────────────────────
+
+class SessionResponse(BaseModel):
+    id: uuid.UUID
+    user_agent: Optional[str] = None
+    ip_address: Optional[str] = None
+    is_active: bool
+    last_active_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 # ── GitHub ────────────────────────────────────────────────────────────────────

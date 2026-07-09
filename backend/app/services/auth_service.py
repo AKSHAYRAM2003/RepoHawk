@@ -79,13 +79,15 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> boo
     return True
 
 
-async def update_user(db: AsyncSession, user_id: uuid.UUID, name: Optional[str] = None) -> Optional[User]:
+async def update_user(db: AsyncSession, user_id: uuid.UUID, name: Optional[str] = None, avatar_url: Optional[str] = None) -> Optional[User]:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         return None
     if name is not None:
         user.name = name
+    if avatar_url is not None:
+        user.avatar_url = avatar_url
     await db.commit()
     await db.refresh(user)
     return user

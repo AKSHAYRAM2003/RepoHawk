@@ -16,6 +16,7 @@ class User(Base):
     github_id = Column(BigInteger, unique=True, nullable=True, index=True)
     github_username = Column(String, nullable=True)
     github_access_token = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -25,6 +26,7 @@ class User(Base):
     github_installations = relationship("GitHubInstallation", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     notification_preferences = relationship("NotificationPreference", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
 
 
 class PasswordResetToken(Base):

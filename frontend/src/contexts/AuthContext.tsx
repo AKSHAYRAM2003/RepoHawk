@@ -11,6 +11,7 @@ interface User {
   is_verified: boolean;
   github_id: number | null;
   github_username: string | null;
+  avatar_url: string | null;
   created_at: string;
 }
 
@@ -21,7 +22,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { name?: string }) => Promise<void>;
+  updateProfile: (data: { name?: string; avatar_url?: string }) => Promise<void>;
   isLoginModalOpen: boolean;
   setLoginModalOpen: (open: boolean) => void;
   isSignupModalOpen: boolean;
@@ -104,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/");
   }, [router]);
 
-  const updateProfile = useCallback(async (data: { name?: string }) => {
+  const updateProfile = useCallback(async (data: { name?: string; avatar_url?: string }) => {
     const res = await fetch("/api/auth/me", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

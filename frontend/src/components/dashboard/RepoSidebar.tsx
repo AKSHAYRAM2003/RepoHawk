@@ -29,7 +29,8 @@ import {
   GitBranch,
   Globe,
   CheckCircle,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react";
 import { sileo } from "sileo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -73,18 +74,23 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [displayName, setDisplayName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [settingsTab, setSettingsTab] = useState("general");
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
+  const [passwordOld, setPasswordOld] = useState("");
+  const [passwordNew, setPasswordNew] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [sessions, setSessions] = useState<{ id: string; user_agent: string | null; ip_address: string | null; is_active: boolean; last_active_at: string; created_at: string }[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [isReadmeModalOpen, setIsReadmeModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState("appearance");
   const [githubConnected, setGitHubConnected] = useState(false);
   const [githubLogin, setGitHubLogin] = useState("");
   const [reposCount, setReposCount] = useState(0);
   const [githubLoading, setGitHubLoading] = useState(false);
   const { resolvedTheme, theme, setTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const { toastPosition, setToastPosition } = useToastPosition();
   const [linkLoading, setLinkLoading] = useState(false);
   const [unlinkLoading, setUnlinkLoading] = useState(false);
@@ -96,6 +102,25 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
     in_app: true,
     email: false,
   });
+
+  // Fetch sessions when security tab opens
+  useEffect(() => {
+    if (settingsTab !== "security") return;
+    (async () => {
+      setSessionsLoading(true);
+      try {
+        const res = await fetch("/api/auth/sessions");
+        if (res.ok) {
+          const data = await res.json();
+          setSessions(data);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setSessionsLoading(false);
+      }
+    })();
+  }, [settingsTab]);
 
   // Listen for global Cmd+K / Ctrl+K keyboard shortcut
   useEffect(() => {
@@ -758,26 +783,162 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                     </div>
 
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 rounded-xl border border-outline-variant">
-                        <div>
-                          <p className="text-sm font-semibold text-on-surface">Password</p>
-                          <p className="text-xs text-on-surface-variant mt-0.5">Change your account password</p>
-                        </div>
+                      <div className="p-4 rounded-xl border border-outline-variant">
                         <button
-                          onClick={() => setIsPasswordModalOpen(true)}
-                          className="px-4 py-2 text-xs font-semibold rounded-xl border border-outline-variant text-on-surface hover-surface transition-all cursor-pointer"
+                          onClick={() => setIsPasswordOpen(!isPasswordOpen)}
+                          className="w-full flex items-center justify-between"
                         >
-                          Update
+                          <div className="text-left">
+                            <p className="text-sm font-semibold text-on-surface">Password</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">Change your account password</p>
+                          </div>
+                          <ChevronDown
+                            size={18}
+                            style={{ color: "var(--on-surface-variant)", transform: isPasswordOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}
+                          />
                         </button>
+                        {isPasswordOpen && (
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              if (passwordNew !== passwordConfirm) {
+                                sileo.error({ title: "Passwords don't match", description: "Make sure both passwords are identical" });
+                                return;
+                              }
+                              if (passwordNew.length < 6) {
+                                sileo.error({ title: "Password too short", description: "Minimum 6 characters" });
+                                return;
+                              }
+                              try {
+                                const res = await fetch("/api/auth/me/password", {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ old_password: passwordOld, new_password: passwordNew }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) {
+                                  sileo.error({ title: "Could not update password", description: data.detail || "Check your current password and try again" });
+                                  return;
+                                }
+                                sileo.success({ title: "Password changed", description: "Use your new password next time you sign in" });
+                                setIsPasswordOpen(false);
+                                setPasswordOld("");
+                                setPasswordNew("");
+                                setPasswordConfirm("");
+                              } catch {
+                                sileo.error({ title: "Something went wrong", description: "Please try again later" });
+                              }
+                            }}
+                            className="space-y-3 mt-4 pt-4 border-t border-outline-variant"
+                          >
+                            <div>
+                              <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Current password</label>
+                              <input
+                                type="password"
+                                value={passwordOld}
+                                onChange={(e) => setPasswordOld(e.target.value)}
+                                required
+                                className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-on-surface-variant mb-1.5">New password</label>
+                              <input
+                                type="password"
+                                value={passwordNew}
+                                onChange={(e) => setPasswordNew(e.target.value)}
+                                required
+                                minLength={6}
+                                className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Confirm new password</label>
+                              <input
+                                type="password"
+                                value={passwordConfirm}
+                                onChange={(e) => setPasswordConfirm(e.target.value)}
+                                required
+                                className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
+                              />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => { setIsPasswordOpen(false); setPasswordOld(""); setPasswordNew(""); setPasswordConfirm(""); }}
+                                className="px-4 py-2 rounded-full border border-outline-variant text-on-surface hover:bg-surface-high transition-colors font-medium text-xs"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                className="px-4 py-2 rounded-full bg-on-surface text-surface hover:opacity-90 transition-opacity font-medium text-xs"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </form>
+                        )}
                       </div>
-                      <div className="flex items-center justify-between p-4 rounded-xl border border-outline-variant">
-                        <div>
-                          <p className="text-sm font-semibold text-on-surface">Sessions</p>
-                          <p className="text-xs text-on-surface-variant mt-0.5">Manage active sessions</p>
+                      <div className="p-4 rounded-xl border border-outline-variant">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <p className="text-sm font-semibold text-on-surface">Sessions</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">Manage active sessions</p>
+                          </div>
                         </div>
-                        <button className="px-4 py-2 text-xs font-semibold rounded-xl border border-outline-variant text-on-surface hover-surface transition-all cursor-pointer">
-                          View
-                        </button>
+                        {sessionsLoading ? (
+                          <div className="flex items-center justify-center py-6">
+                            <Loader2 size={18} className="animate-spin" style={{ color: "var(--on-surface-variant)" }} />
+                          </div>
+                        ) : sessions.length === 0 ? (
+                          <p className="text-xs text-on-surface-variant text-center py-4">No active sessions found</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {sessions.map((s) => (
+                              <div key={s.id} className="flex items-center justify-between p-3 rounded-lg bg-surface-container-highest">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-on-surface truncate">
+                                    {s.user_agent
+                                      ? (() => {
+                                          const ua = s.user_agent.toLowerCase();
+                                          if (ua.includes("chrome")) return "Chrome";
+                                          if (ua.includes("safari") && !ua.includes("chrome")) return "Safari";
+                                          if (ua.includes("firefox")) return "Firefox";
+                                          if (ua.includes("edge")) return "Edge";
+                                          return s.user_agent.split("/")[0] || "Browser";
+                                        })()
+                                      : "Unknown browser"}
+                                  </p>
+                                  <p className="text-xs text-on-surface-variant mt-0.5">
+                                    {s.ip_address || "Unknown IP"}
+                                    {s.last_active_at && (
+                                      <> &middot; Last active {new Date(s.last_active_at).toLocaleDateString()}</>
+                                    )}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch(`/api/auth/sessions/${s.id}`, { method: "DELETE" });
+                                      if (res.ok) {
+                                        setSessions((prev) => prev.filter((x) => x.id !== s.id));
+                                        sileo.success({ title: "Session revoked" });
+                                      } else {
+                                        sileo.error({ title: "Could not revoke session" });
+                                      }
+                                    } catch {
+                                      sileo.error({ title: "Could not revoke session" });
+                                    }
+                                  }}
+                                  className="text-on-surface-variant hover:text-red-400 transition-colors shrink-0 ml-3"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -921,23 +1082,62 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
             
             <div className="flex justify-center mb-6">
               <div className="relative">
-                <div className="w-24 h-24 rounded-full bg-[#1db08b] flex items-center justify-center text-white text-4xl font-normal tracking-wide">
-                  AK
-                </div>
-                <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-on-surface hover:bg-surface-highest transition-colors shadow-sm">
-                  <Camera size={14} />
-                </button>
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = async (ev) => {
+                        const dataUrl = ev.target?.result as string;
+                        try {
+                          await updateProfile({ avatar_url: dataUrl });
+                          sileo.success({ title: "Avatar updated" });
+                        } catch {
+                          sileo.error({ title: "Could not upload avatar" });
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                  {user?.avatar_url ? (
+                    <img
+                      src={user.avatar_url}
+                      alt="Avatar"
+                      className="w-24 h-24 rounded-full object-cover border-2 border-outline-variant"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-[#1db08b] flex items-center justify-center text-white text-4xl font-normal tracking-wide">
+                      {(user?.name || user?.email || "?").charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-on-surface hover:bg-surface-highest transition-colors shadow-sm">
+                    <Camera size={14} />
+                  </div>
+                </label>
               </div>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Display name</label>
-                <input 
-                  type="text" 
+                <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Name</label>
+                <input
+                  type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors" 
+                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Email</label>
+                <input
+                  type="email"
+                  value={user?.email || ""}
+                  readOnly
+                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface/50 cursor-not-allowed"
                 />
               </div>
             </div>
@@ -945,13 +1145,13 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
             <p className="text-xs text-center text-on-surface-variant mt-6 mb-8">Your profile helps people recognize you in group chats.</p>
 
             <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setIsProfileModalOpen(false)} 
+              <button
+                onClick={() => setIsProfileModalOpen(false)}
                 className="px-5 py-2.5 rounded-full border border-outline-variant text-on-surface hover:bg-surface-high transition-colors font-medium text-sm"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={async () => {
                   if (!displayName.trim()) return;
                   setSavingProfile(true);
@@ -971,23 +1171,6 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                 {savingProfile ? "Saving..." : "Save"}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Password Change Modal */}
-      {isPasswordModalOpen && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setIsPasswordModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm bg-surface-container border border-outline-variant rounded-2xl shadow-2xl overflow-hidden p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-xl font-bold text-on-surface mb-6">Change password</h2>
-
-            <PasswordChangeForm onDone={() => setIsPasswordModalOpen(false)} />
           </div>
         </div>
       )}

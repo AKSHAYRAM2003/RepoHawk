@@ -14,8 +14,9 @@ from app.core.dependencies import get_current_user
 from app.schemas import (
     RegisterRequest, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest,
     UpdateProfileRequest, ChangePasswordRequest, UserResponse, TokenResponse, MessageResponse,
+    SessionResponse,
 )
-from app.services import auth_service, email_service
+from app.services import auth_service, email_service, session_service
 from app.models.user import User
 
 logger = logging.getLogger("repohawk.auth")
@@ -45,7 +46,7 @@ def _clear_auth_cookies(response: Response):
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register(payload: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def register(payload: RegisterRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     try:
         user = await auth_service.create_user(db, payload.email, payload.password, payload.name)
     except ValueError as e:
@@ -54,17 +55,27 @@ async def register(payload: RegisterRequest, response: Response, db: AsyncSessio
     refresh = create_refresh_token(str(user.id))
     await email_service.send_welcome_email(user.email, user.name or "")
     _set_auth_cookies(response, access, refresh)
+    await session_service.create_session(
+        db, user.id, access,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
     return TokenResponse(access_token=access, user=UserResponse.model_validate(user))
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     user = await auth_service.authenticate_user(db, payload.email, payload.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     access = create_access_token(str(user.id))
     refresh = create_refresh_token(str(user.id))
     _set_auth_cookies(response, access, refresh)
+    await session_service.create_session(
+        db, user.id, access,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
     return TokenResponse(access_token=access, user=UserResponse.model_validate(user))
 
 
@@ -104,7 +115,7 @@ async def update_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    updated = await auth_service.update_user(db, user.id, name=payload.name)
+    updated = await auth_service.update_user(db, user.id, name=payload.name, avatar_url=payload.avatar_url)
     return UserResponse.model_validate(updated)
 
 
@@ -247,6 +258,27 @@ async def github_oauth_callback(
     redirect_url = f"{settings.FRONTEND_URL}{return_url}{sep}{params}"
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.get("/sessions", response_model=list[SessionResponse])
+async def list_sessions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sessions = await session_service.get_user_sessions(db, current_user.id)
+    return sessions
+
+
+@router.delete("/sessions/{session_id}", response_model=MessageResponse)
+async def revoke_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ok = await session_service.revoke_session(db, session_id, current_user.id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return MessageResponse(message="Session revoked")
 
 
 @router.post("/github/unlink")
