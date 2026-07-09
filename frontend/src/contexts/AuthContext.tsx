@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { sileo } from "sileo";
 
 interface User {
   id: string;
@@ -60,7 +61,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       params.delete("github_linked");
       const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
       window.history.replaceState({}, "", newUrl);
-      fetchUser();
+      fetchUser().then(() => {
+        sileo.success({ title: "GitHub account linked!" });
+      });
+    }
+    if (params.has("installed")) {
+      params.delete("installed");
+      const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
+      window.history.replaceState({}, "", newUrl);
+      fetchUser().then(() => {
+        sileo.success({ title: "GitHub App installed!" });
+      });
     }
   }, [fetchUser]);
 

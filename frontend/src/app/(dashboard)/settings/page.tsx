@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Sun, Moon, Monitor, Settings2, Palette, GitBranch, Globe, CheckCircle, Loader2, Bell } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
+import { sileo } from "sileo";
 import NotificationToggle from "@/components/notifications/NotificationToggle";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToastPosition } from "@/contexts/ToastContext";
 
 interface GitHubStatus {
   connected: boolean;
@@ -33,11 +35,20 @@ interface GitHubStatus {
 export default function SettingsPage() {
   const { resolvedTheme, theme, setTheme } = useTheme();
   const { user } = useAuth();
+  const { toastPosition, setToastPosition } = useToastPosition();
   const [activeTab, setActiveTab] = useState("appearance");
   const [githubStatus, setGitHubStatus] = useState<GitHubStatus | null>(null);
   const [githubLoading, setGitHubLoading] = useState(true);
   const [linkLoading, setLinkLoading] = useState(false);
   const [unlinkLoading, setUnlinkLoading] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState({
+    push_events: false,
+    pull_requests: false,
+    analysis_complete: true,
+    analysis_failed: true,
+    in_app: true,
+    email: false,
+  });
 
   useEffect(() => {
     fetch("/api/github/status", { cache: "no-store" })
@@ -45,7 +56,26 @@ export default function SettingsPage() {
       .then((data) => setGitHubStatus(data))
       .catch(() => setGitHubStatus({ connected: false, installation: null }))
       .finally(() => setGitHubLoading(false));
+    fetch("/api/notifications/preferences")
+      .then((r) => r.json())
+      .then((data) => setNotifPrefs(data))
+      .catch(() => {});
   }, []);
+
+  const toggleNotif = useCallback(async (key: string, label: string) => {
+    const newValue = !(notifPrefs as any)[key];
+    setNotifPrefs((prev) => ({ ...prev, [key]: newValue }));
+    try {
+      await fetch("/api/notifications/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: newValue }),
+      });
+      sileo.success({ title: newValue ? `${label} on` : `${label} off` });
+    } catch {
+      setNotifPrefs((prev) => ({ ...prev, [key]: !newValue }));
+    }
+  }, [notifPrefs]);
 
   return (
     <div className="min-h-screen p-6 md:p-10 max-w-3xl mx-auto space-y-10">
@@ -110,7 +140,10 @@ export default function SettingsPage() {
               return (
                 <button
                   key={value}
-                  onClick={() => setTheme(value as "light" | "dark" | "system")}
+                  onClick={() => {
+                    setTheme(value as "light" | "dark" | "system");
+                    sileo.success({ title: `Theme: ${label}` });
+                  }}
                   className="relative flex flex-col items-start gap-3 p-4 rounded-2xl border text-left transition-all hover:-translate-y-0.5"
                   style={{
                     borderColor: isActive ? "var(--primary)" : "var(--outline-variant)",
@@ -203,6 +236,7 @@ export default function SettingsPage() {
                       setUnlinkLoading(true);
                       try {
                         await fetch("/api/auth/github/unlink", { method: "POST" });
+                        sileo.success({ title: "GitHub account unlinked" });
                         window.location.reload();
                       } finally {
                         setUnlinkLoading(false);
@@ -218,7 +252,7 @@ export default function SettingsPage() {
                     onClick={async () => {
                       setLinkLoading(true);
                       try {
-                        const res = await fetch("/api/auth/github/url");
+                        const res = await fetch(`/api/auth/github/url?return_url=${encodeURIComponent(window.location.pathname)}`);
                         const data = await res.json();
                         if (data.url) window.location.href = data.url;
                       } finally {
@@ -352,42 +386,69 @@ export default function SettingsPage() {
           <div className="space-y-1">
             <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Events</p>
             <div className="space-y-3 mt-3">
-              <NotificationToggle
-                label="Push events"
-                desc="Notify when new code is pushed to a connected repo"
-                defaultChecked={false}
-              />
-              <NotificationToggle
-                label="Pull requests"
-                desc="Architecture impact summaries for new PRs"
-                defaultChecked={false}
-              />
-              <NotificationToggle
-                label="Analysis complete"
-                desc="When a repo analysis finishes successfully"
-                defaultChecked={true}
-              />
-              <NotificationToggle
-                label="Analysis failed"
-                desc="When a repo analysis encounters an error"
-                defaultChecked={true}
-              />
+                      <NotificationToggle
+                        label="Push events"
+                        desc="Notify when new code is pushed to a connected repo"
+                        value={notifPrefs.push_events}
+                        onChange={() => toggleNotif("push_events", "Push events")}
+                      />
+                      <NotificationToggle
+                        label="Pull requests"
+                        desc="Architecture impact summaries for new PRs"
+                        value={notifPrefs.pull_requests}
+                        onChange={() => toggleNotif("pull_requests", "Pull requests")}
+                      />
+                      <NotificationToggle
+                        label="Analysis complete"
+                        desc="When a repo analysis finishes successfully"
+                        value={notifPrefs.analysis_complete}
+                        onChange={() => toggleNotif("analysis_complete", "Analysis complete")}
+                      />
+                      <NotificationToggle
+                        label="Analysis failed"
+                        desc="When a repo analysis encounters an error"
+                        value={notifPrefs.analysis_failed}
+                        onChange={() => toggleNotif("analysis_failed", "Analysis failed")}
+                      />
             </div>
           </div>
 
           <div className="space-y-1">
             <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase mt-6">Channels</p>
             <div className="space-y-3 mt-3">
-              <NotificationToggle
-                label="In-app"
-                desc="Notifications appear in this panel"
-                defaultChecked={true}
-              />
-              <NotificationToggle
-                label="Email"
-                desc="Send notifications to your email"
-                defaultChecked={false}
-              />
+                      <NotificationToggle
+                        label="In-app"
+                        desc="Notifications appear in this panel"
+                        value={notifPrefs.in_app}
+                        onChange={() => toggleNotif("in_app", "In-app")}
+                      />
+                      <NotificationToggle
+                        label="Email"
+                        desc="Send notifications to your email"
+                        value={notifPrefs.email}
+                        onChange={() => toggleNotif("email", "Email")}
+                      />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase mt-6">Toast Position</p>
+            <p className="text-xs text-on-surface-variant mt-1 mb-3">Choose where toast notifications appear on screen</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(["top-left","top-center","top-right","bottom-left","bottom-center","bottom-right"] as const).map((pos) => (
+                <button
+                  key={pos}
+                  onClick={() => setToastPosition(pos)}
+                  className="px-3 py-2 text-xs font-medium rounded-lg border transition-all cursor-pointer"
+                  style={{
+                    borderColor: toastPosition === pos ? "var(--primary)" : "var(--outline-variant)",
+                    background: toastPosition === pos ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "var(--surface-container-highest)",
+                    color: toastPosition === pos ? "var(--primary)" : "var(--on-surface-variant)",
+                  }}
+                >
+                  {pos === "top-left" ? "Top Left" : pos === "top-center" ? "Top Center" : pos === "top-right" ? "Top Right" : pos === "bottom-left" ? "Bottom Left" : pos === "bottom-center" ? "Bottom Center" : "Bottom Right"}
+                </button>
+              ))}
             </div>
           </div>
 

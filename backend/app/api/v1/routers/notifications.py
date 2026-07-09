@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
-from app.schemas import NotificationResponse, UnreadCountResponse
+from app.schemas import NotificationResponse, UnreadCountResponse, NotificationPreferenceResponse, UpdateNotificationPreferenceRequest
 from app.services import notification_service
 
 logger = logging.getLogger("repohawk.routers.notifications")
@@ -57,3 +57,23 @@ async def mark_all_read(
 ):
     await notification_service.mark_all_as_read(db, current_user.id)
     return {"status": "ok"}
+
+
+@router.get("/preferences", response_model=NotificationPreferenceResponse)
+async def get_preferences(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    prefs = await notification_service.get_preferences(db, current_user.id)
+    return NotificationPreferenceResponse.model_validate(prefs)
+
+
+@router.put("/preferences", response_model=NotificationPreferenceResponse)
+async def update_preferences(
+    payload: UpdateNotificationPreferenceRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    data = payload.model_dump(exclude_none=True)
+    prefs = await notification_service.update_preferences(db, current_user.id, data)
+    return NotificationPreferenceResponse.model_validate(prefs)

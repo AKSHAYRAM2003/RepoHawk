@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.models.notification import Notification
+from app.models.notification_preference import NotificationPreference
 from app.models.user import User
 
 logger = logging.getLogger("repohawk.notifications")
@@ -82,3 +83,27 @@ async def create_notification(
     await db.commit()
     await db.refresh(notif)
     return notif
+
+
+async def get_preferences(db: AsyncSession, user_id) -> NotificationPreference:
+    result = await db.execute(
+        select(NotificationPreference).where(NotificationPreference.user_id == user_id)
+    )
+    prefs = result.scalar_one_or_none()
+    if not prefs:
+        prefs = NotificationPreference(user_id=user_id)
+        db.add(prefs)
+        await db.commit()
+        await db.refresh(prefs)
+    return prefs
+
+
+async def update_preferences(db: AsyncSession, user_id, data: dict) -> NotificationPreference:
+    prefs = await get_preferences(db, user_id)
+    for key, value in data.items():
+        if value is not None:
+            setattr(prefs, key, value)
+    db.add(prefs)
+    await db.commit()
+    await db.refresh(prefs)
+    return prefs

@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import LoginModal from "@/components/auth/LoginModal";
 import SignupModal from "@/components/auth/SignupModal";
+import { ToastProvider } from "@/contexts/ToastContext";
 import "./globals.css";
 
 const fkGrotesk = localFont({
@@ -62,9 +63,11 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans transition-colors duration-300">
         <AuthProvider>
           <ThemeProvider>
-            {children}
-            <LoginModal />
-            <SignupModal />
+            <ToastProvider>
+              {children}
+              <LoginModal />
+              <SignupModal />
+            </ToastProvider>
           </ThemeProvider>
         </AuthProvider>
       </body>

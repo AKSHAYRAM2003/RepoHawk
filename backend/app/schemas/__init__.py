@@ -75,6 +75,27 @@ class UnreadCountResponse(BaseModel):
     count: int
 
 
+class NotificationPreferenceResponse(BaseModel):
+    push_events: bool = False
+    pull_requests: bool = False
+    analysis_complete: bool = True
+    analysis_failed: bool = True
+    in_app: bool = True
+    email: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class UpdateNotificationPreferenceRequest(BaseModel):
+    push_events: Optional[bool] = None
+    pull_requests: Optional[bool] = None
+    analysis_complete: Optional[bool] = None
+    analysis_failed: Optional[bool] = None
+    in_app: Optional[bool] = None
+    email: Optional[bool] = None
+
+
 # ── GitHub ────────────────────────────────────────────────────────────────────
 
 class GitHubRepoResponse(BaseModel):

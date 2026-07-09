@@ -31,8 +31,10 @@ import {
   CheckCircle,
   Loader2
 } from "lucide-react";
+import { sileo } from "sileo";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToastPosition } from "@/contexts/ToastContext";
 import ReadmeGeneratorModal from "./ReadmeGeneratorModal";
 import SearchModal from "./SearchModal";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -71,6 +73,9 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [isReadmeModalOpen, setIsReadmeModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
@@ -80,8 +85,17 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const [githubLoading, setGitHubLoading] = useState(false);
   const { resolvedTheme, theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
+  const { toastPosition, setToastPosition } = useToastPosition();
   const [linkLoading, setLinkLoading] = useState(false);
   const [unlinkLoading, setUnlinkLoading] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState({
+    push_events: false,
+    pull_requests: false,
+    analysis_complete: true,
+    analysis_failed: true,
+    in_app: true,
+    email: false,
+  });
 
   // Listen for global Cmd+K / Ctrl+K keyboard shortcut
   useEffect(() => {
@@ -127,7 +141,38 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
       })
       .catch(() => setGitHubConnected(false))
       .finally(() => setGitHubLoading(false));
+    fetch("/api/notifications/preferences")
+      .then((r) => r.json())
+      .then((data) => setNotifPrefs(data))
+      .catch(() => {});
   }, [isSettingsModalOpen]);
+
+  useEffect(() => {
+    if (isProfileModalOpen) {
+      setDisplayName(user?.name || "");
+    }
+  }, [isProfileModalOpen, user?.name]);
+
+  const handleThemeChange = (value: "light" | "dark" | "system") => {
+    const labels = { light: "Light", dark: "Dark", system: "System" };
+    setTheme(value);
+    sileo.success({ title: `Theme: ${labels[value]}` });
+  };
+
+  const toggleNotif = async (key: string, label: string) => {
+    const newValue = !(notifPrefs as any)[key];
+    setNotifPrefs((prev) => ({ ...prev, [key]: newValue }));
+    try {
+      await fetch("/api/notifications/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: newValue }),
+      });
+      sileo.success({ title: newValue ? `${label} on` : `${label} off` });
+    } catch {
+      setNotifPrefs((prev) => ({ ...prev, [key]: !newValue }));
+    }
+  };
 
   const menuItems: MenuGroup[] = [
     { section: "Overview", items: [
@@ -546,7 +591,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                         return (
                           <button
                             key={value}
-                            onClick={() => setTheme(value as "light" | "dark" | "system")}
+                            onClick={() => handleThemeChange(value as "light" | "dark" | "system")}
                             className="relative flex flex-col items-start gap-3 p-4 rounded-2xl border text-left transition-all hover:-translate-y-0.5"
                             style={{
                               borderColor: isActive
@@ -623,22 +668,26 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                         <NotificationToggle
                           label="Push events"
                           desc="Notify when new code is pushed to a connected repo"
-                          defaultChecked={false}
+                          value={notifPrefs.push_events}
+                          onChange={() => toggleNotif("push_events", "Push events")}
                         />
                         <NotificationToggle
                           label="Pull requests"
                           desc="Architecture impact summaries for new PRs"
-                          defaultChecked={false}
+                          value={notifPrefs.pull_requests}
+                          onChange={() => toggleNotif("pull_requests", "Pull requests")}
                         />
                         <NotificationToggle
                           label="Analysis complete"
                           desc="When a repo analysis finishes successfully"
-                          defaultChecked={true}
+                          value={notifPrefs.analysis_complete}
+                          onChange={() => toggleNotif("analysis_complete", "Analysis complete")}
                         />
                         <NotificationToggle
                           label="Analysis failed"
                           desc="When a repo analysis encounters an error"
-                          defaultChecked={true}
+                          value={notifPrefs.analysis_failed}
+                          onChange={() => toggleNotif("analysis_failed", "Analysis failed")}
                         />
                       </div>
                     </div>
@@ -649,13 +698,36 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                         <NotificationToggle
                           label="In-app"
                           desc="Notifications appear in this panel"
-                          defaultChecked={true}
+                          value={notifPrefs.in_app}
+                          onChange={() => toggleNotif("in_app", "In-app")}
                         />
                         <NotificationToggle
                           label="Email"
                           desc="Send notifications to your email"
-                          defaultChecked={false}
+                          value={notifPrefs.email}
+                          onChange={() => toggleNotif("email", "Email")}
                         />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold tracking-wider text-on-surface-variant uppercase mt-6">Toast Position</p>
+                      <p className="text-xs text-on-surface-variant mt-1 mb-3">Choose where toast notifications appear on screen</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(["top-left","top-center","top-right","bottom-left","bottom-center","bottom-right"] as const).map((pos) => (
+                          <button
+                            key={pos}
+                            onClick={() => setToastPosition(pos)}
+                            className="px-3 py-2 text-xs font-medium rounded-lg border transition-all cursor-pointer"
+                            style={{
+                              borderColor: toastPosition === pos ? "var(--primary)" : "var(--outline-variant)",
+                              background: toastPosition === pos ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "var(--surface-container-highest)",
+                              color: toastPosition === pos ? "var(--primary)" : "var(--on-surface-variant)",
+                            }}
+                          >
+                            {pos === "top-left" ? "Top Left" : pos === "top-center" ? "Top Center" : pos === "top-right" ? "Top Right" : pos === "bottom-left" ? "Bottom Left" : pos === "bottom-center" ? "Bottom Center" : "Bottom Right"}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
@@ -683,7 +755,10 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                           <p className="text-sm font-semibold text-on-surface">Password</p>
                           <p className="text-xs text-on-surface-variant mt-0.5">Change your account password</p>
                         </div>
-                        <button className="px-4 py-2 text-xs font-semibold rounded-xl border border-outline-variant text-on-surface hover-surface transition-all cursor-pointer">
+                        <button
+                          onClick={() => setIsPasswordModalOpen(true)}
+                          className="px-4 py-2 text-xs font-semibold rounded-xl border border-outline-variant text-on-surface hover-surface transition-all cursor-pointer"
+                        >
                           Update
                         </button>
                       </div>
@@ -734,6 +809,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                                 setUnlinkLoading(true);
                                 try {
                                   await fetch("/api/auth/github/unlink", { method: "POST" });
+                                  sileo.success({ title: "GitHub account unlinked" });
                                   window.location.reload();
                                 } finally {
                                   setUnlinkLoading(false);
@@ -851,15 +927,8 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                 <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Display name</label>
                 <input 
                   type="text" 
-                  defaultValue="akshayram26" 
-                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors" 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Username</label>
-                <input 
-                  type="text" 
-                  defaultValue="akshayram26" 
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
                   className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors" 
                 />
               </div>
@@ -875,12 +944,42 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                 Cancel
               </button>
               <button 
-                onClick={() => setIsProfileModalOpen(false)} 
-                className="px-5 py-2.5 rounded-full bg-on-surface text-surface hover:opacity-90 transition-opacity font-medium text-sm"
+                onClick={async () => {
+                  if (!displayName.trim()) return;
+                  setSavingProfile(true);
+                  try {
+                    await updateProfile({ name: displayName.trim() });
+                    sileo.success({ title: "Profile updated" });
+                    setIsProfileModalOpen(false);
+                  } catch {
+                    sileo.error({ title: "Failed to update profile" });
+                  } finally {
+                    setSavingProfile(false);
+                  }
+                }}
+                disabled={savingProfile || !displayName.trim()}
+                className="px-5 py-2.5 rounded-full bg-on-surface text-surface hover:opacity-90 transition-opacity font-medium text-sm disabled:opacity-50"
               >
-                Save
+                {savingProfile ? "Saving..." : "Save"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Change Modal */}
+      {isPasswordModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setIsPasswordModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-surface-container border border-outline-variant rounded-2xl shadow-2xl overflow-hidden p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold text-on-surface mb-6">Change password</h2>
+
+            <PasswordChangeForm onDone={() => setIsPasswordModalOpen(false)} />
           </div>
         </div>
       )}

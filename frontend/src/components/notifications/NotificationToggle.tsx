@@ -1,16 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 
 interface Props {
   label: string;
   desc: string;
-  defaultChecked?: boolean;
+  value: boolean;
+  onChange: (v: boolean) => void;
 }
 
-export default function NotificationToggle({ label, desc, defaultChecked = false }: Props) {
-  const [checked, setChecked] = useState(defaultChecked);
-
+export default function NotificationToggle({ label, desc, value, onChange }: Props) {
   return (
     <div className="flex items-center justify-between py-2">
       <div className="flex-1 min-w-0 pr-4">
@@ -18,17 +17,17 @@ export default function NotificationToggle({ label, desc, defaultChecked = false
         <p className="text-xs text-on-surface-variant mt-0.5">{desc}</p>
       </div>
       <button
-        onClick={() => setChecked(!checked)}
+        onClick={() => onChange(!value)}
         className="relative w-9 h-5 rounded-full shrink-0 transition-all duration-200 cursor-pointer"
         style={{
-          background: checked
+          background: value
             ? "linear-gradient(135deg, #4a50c5, #00b08a)"
             : "color-mix(in srgb, var(--on-surface) 15%, transparent)",
         }}
       >
         <div
           className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-200"
-          style={{ transform: checked ? "translateX(16px)" : "translateX(0)" }}
+          style={{ transform: value ? "translateX(16px)" : "translateX(0)" }}
         />
       </button>
     </div>
