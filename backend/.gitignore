@@ -81,7 +81,7 @@ vector_store/
 # LLM cache and models (large files)
 .cache/
 cache/
-models/
+/models/
 *.pkl
 *.pickle
 *.bin
