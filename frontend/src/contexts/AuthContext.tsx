@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
       window.history.replaceState({}, "", newUrl);
       fetchUser().then(() => {
-        sileo.success({ title: "Your GitHub account has been linked" });
+        sileo.success({ title: "GitHub account linked", description: "You can now connect repos and receive notifications" });
       });
     }
     if (params.has("installed")) {
@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
       window.history.replaceState({}, "", newUrl);
       fetchUser().then(() => {
-        sileo.success({ title: "GitHub App installed on your repositories" });
+        sileo.success({ title: "GitHub App installed", description: "Webhook events will be processed automatically" });
       });
     }
   }, [fetchUser]);

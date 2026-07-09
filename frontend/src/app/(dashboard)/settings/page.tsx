@@ -71,7 +71,15 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: newValue }),
       });
-      sileo.success({ title: newValue ? `${label} turned on` : `${label} turned off` });
+      const descs: Record<string, string> = {
+        push_events: "Get notified when code is pushed to your repos",
+        pull_requests: "Architecture impact summaries for new PRs",
+        analysis_complete: "Alerts when repo analysis finishes",
+        analysis_failed: "Alerts when repo analysis encounters an error",
+        in_app: "Notifications appear in the sidebar panel",
+        email: "Notifications sent to your email address",
+      };
+      sileo.success({ title: newValue ? `${label} turned on` : `${label} turned off`, description: descs[key] || "" });
     } catch {
       setNotifPrefs((prev) => ({ ...prev, [key]: !newValue }));
     }
@@ -142,7 +150,7 @@ export default function SettingsPage() {
                   key={value}
                   onClick={() => {
                     setTheme(value as "light" | "dark" | "system");
-                    sileo.success({ title: `Switched to ${label} mode` });
+                    sileo.success({ title: `Switched to ${label} mode`, description: "Theme preference saved" });
                   }}
                   className="relative flex flex-col items-start gap-3 p-4 rounded-2xl border text-left transition-all hover:-translate-y-0.5"
                   style={{
@@ -236,7 +244,7 @@ export default function SettingsPage() {
                       setUnlinkLoading(true);
                       try {
                         await fetch("/api/auth/github/unlink", { method: "POST" });
-                        sileo.success({ title: "Your GitHub account has been unlinked" });
+                        sileo.success({ title: "GitHub account unlinked", description: "You can link a different account anytime" });
                         window.location.reload();
                       } finally {
                         setUnlinkLoading(false);

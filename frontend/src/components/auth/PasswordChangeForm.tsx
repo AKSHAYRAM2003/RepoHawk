@@ -15,7 +15,7 @@ export default function PasswordChangeForm({ onDone }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      sileo.error({ title: "Passwords don't match" });
+      sileo.error({ title: "Passwords don't match", description: "Make sure both passwords are identical" });
       return;
     }
     if (newPassword.length < 6) {
@@ -31,13 +31,13 @@ export default function PasswordChangeForm({ onDone }: Props) {
       });
       const data = await res.json();
       if (!res.ok) {
-        sileo.error({ title: data.detail || "Failed to update password" });
+        sileo.error({ title: "Could not update password", description: data.detail || "Check your current password and try again" });
         return;
       }
-      sileo.success({ title: "Your password has been changed" });
+      sileo.success({ title: "Password changed", description: "Use your new password next time you sign in" });
       onDone();
     } catch {
-      sileo.error({ title: "Something went wrong" });
+      sileo.error({ title: "Something went wrong", description: "Please try again later" });
     }
   };
 

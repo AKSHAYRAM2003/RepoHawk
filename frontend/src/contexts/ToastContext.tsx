@@ -34,10 +34,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-      <ToastContext.Provider value={{ toastPosition, setToastPosition: updatePosition }}>
+    <ToastContext.Provider value={{ toastPosition, setToastPosition: updatePosition }}>
       {children}
-      <style dangerouslySetInnerHTML={{__html:`[data-sileo-container],.sileo-toaster{position:fixed;z-index:2147483647!important}`}} />
-      <Toaster position={toastPosition} theme="dark" />
+      <style>{`
+        [data-sileo-viewport] { z-index: 2147483647 !important; }
+      `}</style>
+      <Toaster
+        position={toastPosition}
+        options={{
+          fill: "#171717",
+          styles: {
+            title: "text-white! font-semibold!",
+            description: "text-white/70! text-sm!",
+            badge: "bg-white/10!",
+          },
+        }}
+      />
     </ToastContext.Provider>
   );
 }

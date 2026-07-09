@@ -156,7 +156,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const handleThemeChange = (value: "light" | "dark" | "system") => {
     const labels = { light: "Light", dark: "Dark", system: "System" };
     setTheme(value);
-    sileo.success({ title: `Switched to ${labels[value]} mode` });
+    sileo.success({ title: `Switched to ${labels[value]} mode`, description: "Theme preference saved" });
   };
 
   const toggleNotif = async (key: string, label: string) => {
@@ -168,7 +168,15 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: newValue }),
       });
-      sileo.success({ title: newValue ? `${label} turned on` : `${label} turned off` });
+      const descs: Record<string, string> = {
+        push_events: "Get notified when code is pushed to your repos",
+        pull_requests: "Architecture impact summaries for new PRs",
+        analysis_complete: "Alerts when repo analysis finishes",
+        analysis_failed: "Alerts when repo analysis encounters an error",
+        in_app: "Notifications appear in the sidebar panel",
+        email: "Notifications sent to your email address",
+      };
+      sileo.success({ title: newValue ? `${label} turned on` : `${label} turned off`, description: descs[key] || "" });
     } catch {
       setNotifPrefs((prev) => ({ ...prev, [key]: !newValue }));
     }
@@ -809,7 +817,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                                 setUnlinkLoading(true);
                                 try {
                                   await fetch("/api/auth/github/unlink", { method: "POST" });
-                                  sileo.success({ title: "Your GitHub account has been unlinked" });
+                                  sileo.success({ title: "GitHub account unlinked", description: "You can link a different account anytime" });
                                   window.location.reload();
                                 } finally {
                                   setUnlinkLoading(false);
@@ -949,10 +957,10 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                   setSavingProfile(true);
                   try {
                     await updateProfile({ name: displayName.trim() });
-                    sileo.success({ title: "Your profile has been saved" });
+                    sileo.success({ title: "Profile saved", description: "Changes are reflected across the app" });
                     setIsProfileModalOpen(false);
                   } catch {
-                    sileo.error({ title: "Failed to update profile" });
+                    sileo.error({ title: "Could not save profile", description: "Please try again" });
                   } finally {
                     setSavingProfile(false);
                   }
