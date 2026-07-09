@@ -470,9 +470,13 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
           className={`flex items-center w-full ${isCollapsed ? "justify-center" : "justify-between"} p-2 rounded-xl hover-surface transition-colors`}
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#4a50c5] to-[#00b08a] flex items-center justify-center text-on-primary font-bold text-sm shrink-0">
-              {(user?.name || user?.email || "U")[0].toUpperCase()}
-            </div>
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#4a50c5] to-[#00b08a] flex items-center justify-center text-on-primary font-bold text-sm shrink-0">
+                {(user?.name || user?.email || "U")[0].toUpperCase()}
+              </div>
+            )}
             {!isCollapsed && (
               <div className="flex flex-col items-start min-w-0">
                 <span className="text-sm font-semibold text-on-surface truncate">{user?.name || user?.email || "User"}</span>
