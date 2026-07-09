@@ -38,7 +38,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <style>{`
         [data-sileo-viewport] { z-index: 2147483647 !important; }
-        [data-sileo-toast] { border: 1px solid rgba(255,255,255,0.08) !important; }
       `}</style>
       <Toaster
         position={toastPosition}
