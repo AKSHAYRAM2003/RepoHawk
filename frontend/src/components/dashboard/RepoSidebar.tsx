@@ -813,16 +813,15 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                                 const res = await fetch("/api/auth/me/password", {
                                   method: "PUT",
                                   headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ old_password: passwordOld, new_password: passwordNew }),
+                                  body: JSON.stringify({ new_password: passwordNew }),
                                 });
                                 const data = await res.json();
                                 if (!res.ok) {
-                                  sileo.error({ title: "Could not update password", description: data.detail || "Check your current password and try again" });
+                                  sileo.error({ title: "Could not update password", description: data.detail || "Try again" });
                                   return;
                                 }
                                 sileo.success({ title: "Password changed", description: "Use your new password next time you sign in" });
                                 setIsPasswordOpen(false);
-                                setPasswordOld("");
                                 setPasswordNew("");
                                 setPasswordConfirm("");
                               } catch {
@@ -831,16 +830,6 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                             }}
                             className="space-y-3 mt-4 pt-4 border-t border-outline-variant"
                           >
-                            <div>
-                              <label className="block text-xs font-medium text-on-surface-variant mb-1.5">Current password</label>
-                              <input
-                                type="password"
-                                value={passwordOld}
-                                onChange={(e) => setPasswordOld(e.target.value)}
-                                required
-                                className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
-                              />
-                            </div>
                             <div>
                               <label className="block text-xs font-medium text-on-surface-variant mb-1.5">New password</label>
                               <input
@@ -865,7 +854,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                             <div className="flex justify-end gap-3 pt-1">
                               <button
                                 type="button"
-                                onClick={() => { setIsPasswordOpen(false); setPasswordOld(""); setPasswordNew(""); setPasswordConfirm(""); }}
+                                onClick={() => { setIsPasswordOpen(false); setPasswordNew(""); setPasswordConfirm(""); }}
                                 className="px-4 py-2 rounded-full border border-outline-variant text-on-surface hover:bg-surface-high transition-colors font-medium text-xs"
                               >
                                 Cancel

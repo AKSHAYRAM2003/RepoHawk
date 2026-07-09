@@ -125,9 +125,9 @@ async def change_my_password(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ok = await auth_service.change_password(db, user.id, payload.old_password, payload.new_password)
+    ok = await auth_service.change_password(db, user.id, payload.new_password, old_password=payload.old_password)
     if not ok:
-        raise HTTPException(status_code=400, detail="Current password is incorrect")
+        raise HTTPException(status_code=400, detail="Could not update password")
     return MessageResponse(message="Password updated")
 
 

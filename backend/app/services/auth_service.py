@@ -93,10 +93,12 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, name: Optional[str] 
     return user
 
 
-async def change_password(db: AsyncSession, user_id: uuid.UUID, old_password: str, new_password: str) -> bool:
+async def change_password(db: AsyncSession, user_id: uuid.UUID, new_password: str, old_password: Optional[str] = None) -> bool:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(old_password, user.password_hash):
+    if not user:
+        return False
+    if old_password and not verify_password(old_password, user.password_hash):
         return False
     user.password_hash = hash_password(new_password)
     await db.commit()

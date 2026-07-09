@@ -42,6 +42,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <Toaster
         position={toastPosition}
         options={{
+          duration: 4000,
           fill: "#2e2e2e",
           styles: {
             title: "text-white! font-semibold!",
