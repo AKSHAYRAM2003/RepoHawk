@@ -71,7 +71,7 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: newValue }),
       });
-      sileo.success({ title: newValue ? `${label} on` : `${label} off` });
+      sileo.success({ title: newValue ? `${label} turned on` : `${label} turned off` });
     } catch {
       setNotifPrefs((prev) => ({ ...prev, [key]: !newValue }));
     }
@@ -142,7 +142,7 @@ export default function SettingsPage() {
                   key={value}
                   onClick={() => {
                     setTheme(value as "light" | "dark" | "system");
-                    sileo.success({ title: `Theme: ${label}` });
+                    sileo.success({ title: `Switched to ${label} mode` });
                   }}
                   className="relative flex flex-col items-start gap-3 p-4 rounded-2xl border text-left transition-all hover:-translate-y-0.5"
                   style={{
@@ -236,7 +236,7 @@ export default function SettingsPage() {
                       setUnlinkLoading(true);
                       try {
                         await fetch("/api/auth/github/unlink", { method: "POST" });
-                        sileo.success({ title: "GitHub account unlinked" });
+                        sileo.success({ title: "Your GitHub account has been unlinked" });
                         window.location.reload();
                       } finally {
                         setUnlinkLoading(false);

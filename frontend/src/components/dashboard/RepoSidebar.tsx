@@ -156,7 +156,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
   const handleThemeChange = (value: "light" | "dark" | "system") => {
     const labels = { light: "Light", dark: "Dark", system: "System" };
     setTheme(value);
-    sileo.success({ title: `Theme: ${labels[value]}` });
+    sileo.success({ title: `Switched to ${labels[value]} mode` });
   };
 
   const toggleNotif = async (key: string, label: string) => {
@@ -168,7 +168,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: newValue }),
       });
-      sileo.success({ title: newValue ? `${label} on` : `${label} off` });
+      sileo.success({ title: newValue ? `${label} turned on` : `${label} turned off` });
     } catch {
       setNotifPrefs((prev) => ({ ...prev, [key]: !newValue }));
     }
@@ -809,7 +809,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                                 setUnlinkLoading(true);
                                 try {
                                   await fetch("/api/auth/github/unlink", { method: "POST" });
-                                  sileo.success({ title: "GitHub account unlinked" });
+                                  sileo.success({ title: "Your GitHub account has been unlinked" });
                                   window.location.reload();
                                 } finally {
                                   setUnlinkLoading(false);
@@ -949,7 +949,7 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
                   setSavingProfile(true);
                   try {
                     await updateProfile({ name: displayName.trim() });
-                    sileo.success({ title: "Profile updated" });
+                    sileo.success({ title: "Your profile has been saved" });
                     setIsProfileModalOpen(false);
                   } catch {
                     sileo.error({ title: "Failed to update profile" });

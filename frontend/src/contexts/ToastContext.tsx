@@ -36,6 +36,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
       <ToastContext.Provider value={{ toastPosition, setToastPosition: updatePosition }}>
       {children}
+      <style dangerouslySetInnerHTML={{__html:`[data-sileo-container],.sileo-toaster{position:fixed;z-index:2147483647!important}`}} />
       <Toaster position={toastPosition} theme="dark" />
     </ToastContext.Provider>
   );

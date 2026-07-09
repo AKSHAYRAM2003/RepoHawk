@@ -34,7 +34,7 @@ export default function PasswordChangeForm({ onDone }: Props) {
         sileo.error({ title: data.detail || "Failed to update password" });
         return;
       }
-      sileo.success({ title: "Password updated" });
+      sileo.success({ title: "Your password has been changed" });
       onDone();
     } catch {
       sileo.error({ title: "Something went wrong" });
