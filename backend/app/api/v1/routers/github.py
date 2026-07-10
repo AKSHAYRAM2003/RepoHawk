@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.schemas import GitHubConnectionStatus, GitHubInstallationResponse, GitHubRepoResponse, UpdateAutoAnalyzeRequest
-from app.services import github_service
+from app.services import github_service, notification_service
 
 logger = logging.getLogger("repohawk.routers.github")
 
@@ -121,6 +121,9 @@ async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             install_id = installation_data.get("id")
             install = await github_service.get_installation_by_install_id(db, install_id)
             if install:
+                prefs = await notification_service.get_preferences(db, install.user_id)
+                if not prefs.pull_requests:
+                    return {"status": "ok"}
                 pr = data.get("pull_request", {})
                 repo = data.get("repository", {})
                 pr_number = pr.get("number")

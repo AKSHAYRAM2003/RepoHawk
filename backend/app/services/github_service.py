@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.models.github import GitHubInstallation, GitHubRepo
 from app.models.notification import Notification
 from app.models.user import User
+from app.services.notification_service import get_preferences
 
 logger = logging.getLogger("repohawk.github")
 
@@ -170,6 +171,9 @@ async def handle_push_event(db: AsyncSession, installation_id: int, repo_name: s
     )
     gr = result.scalar_one_or_none()
     if gr and gr.auto_analyze:
+        prefs = await get_preferences(db, install.user_id)
+        if not prefs.push_events:
+            return
         await _create_notification(
             db, install.user_id, "push_detected",
             f"New push to {owner}/{repo_name} ({branch})",

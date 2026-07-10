@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models.repo import Repo
 from app.models.diagram import Diagram
+from app.models.notification import Notification
 from app.agents.graph import analysis_graph
 from app.core.progress import progress_manager, task_manager
 
@@ -125,6 +126,16 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 if "error" in final_state and final_state["error"]:
                     repo.analysis_status = "failed"
                     await _safe_commit(db)
+
+                    notif = Notification(
+                        user_id=repo.user_id,
+                        type="analysis_failed",
+                        title=f"Analysis failed — {repo.name}",
+                        body=final_state["error"][:200],
+                        link=f"/repo/{repo.id}",
+                    )
+                    db.add(notif)
+                    await _safe_commit(db)
                     # Publish failure status
                     event_data = {
                         "step": "pipeline_error",
@@ -170,6 +181,17 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 
                 await _safe_commit(db)
 
+                # Notify user of completion
+                notif = Notification(
+                    user_id=repo.user_id,
+                    type="analysis_complete",
+                    title=f"Analysis complete — {repo.name}",
+                    body=f"Architecture diagram generated with {final_state.get('total_files', 0)} files analyzed",
+                    link=f"/repo/{repo.id}",
+                )
+                db.add(notif)
+                await _safe_commit(db)
+
                 # Publish completion status
                 final_event = {
                     "step": "pipeline_complete",
@@ -195,6 +217,16 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 repo.logs = current_logs
                 await _safe_commit(db)
                 progress_manager.publish(str(repo_id), timeout_event)
+
+                notif = Notification(
+                    user_id=repo.user_id,
+                    type="analysis_failed",
+                    title=f"Analysis timed out — {repo.name}",
+                    body="A single step exceeded 5 minutes. Try a smaller repository.",
+                    link=f"/repo/{repo.id}",
+                )
+                db.add(notif)
+                await _safe_commit(db)
 
             except asyncio.CancelledError:
                 # Handle cancellation explicitly
@@ -229,6 +261,16 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 repo.logs = current_logs
                 await _safe_commit(db)
                 progress_manager.publish(str(repo_id), error_event)
+
+                notif = Notification(
+                    user_id=repo.user_id,
+                    type="analysis_failed",
+                    title=f"Analysis failed — {repo.name}",
+                    body=str(e)[:200],
+                    link=f"/repo/{repo.id}",
+                )
+                db.add(notif)
+                await _safe_commit(db)
     finally:
         task_manager.unregister_task(str(repo_id))
 
