@@ -27,9 +27,24 @@ export async function POST(req: Request) {
 
   if (!upstream.ok || !upstream.body) {
     const text = await upstream.text().catch(() => "");
+    let errorMessage = `Chat service error: ${upstream.status}`;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.detail) errorMessage = parsed.detail;
+      else if (parsed.error) errorMessage = parsed.error;
+    } catch {
+      if (text) errorMessage = text;
+    }
+
+    const headers: Record<string, string> = {};
+    const retryAfter = upstream.headers.get("Retry-After");
+    if (retryAfter) {
+      headers["Retry-After"] = retryAfter;
+    }
+
     return NextResponse.json(
-      { error: `Chat service error: ${upstream.status} ${text}` },
-      { status: upstream.status }
+      { error: errorMessage, retryAfter: retryAfter ? Number(retryAfter) : undefined },
+      { status: upstream.status, headers }
     );
   }
 

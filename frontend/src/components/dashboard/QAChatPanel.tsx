@@ -18,12 +18,13 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowUp, Bot, FileCode, Zap, AlertCircle, Square,
   ChevronRight, Copy, Check, RefreshCw, ChevronDown, ChevronUp,
-  History, Plus, Trash2, Search
+  History, Plus, Trash2, Search, Clock, ShieldAlert, CheckCircle2
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { sileo } from "sileo";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,8 @@ interface ChatMessage {
   isStreaming?: boolean;        // True while tokens are still arriving
   isStopped?: boolean;          // True if user pressed Stop mid-stream
   isError?: boolean;
+  isRateLimited?: boolean;      // True if HTTP 429 triggered
+  retryAfterSeconds?: number;   // Seconds until rate limit expires
   timestamp: Date;
 }
 
@@ -462,6 +465,167 @@ function NodeHighlightPill({
   );
 }
 
+// ── Rate Limit Cooldown Card ──────────────────────────────────────────────────
+
+function RateLimitCooldownCard({
+  initialSeconds = 30,
+  message,
+}: {
+  initialSeconds?: number;
+  message?: string;
+}) {
+  const [remaining, setRemaining] = useState(initialSeconds);
+
+  useEffect(() => {
+    setRemaining(initialSeconds);
+  }, [initialSeconds]);
+
+  useEffect(() => {
+    if (remaining <= 0) return;
+    const timer = setInterval(() => {
+      setRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [remaining]);
+
+  const maxSecs = Math.max(initialSeconds, 1);
+  const progressPercent = Math.max(0, Math.min(100, (remaining / maxSecs) * 100));
+  const isRecovered = remaining === 0;
+
+  return (
+    <div
+      style={{
+        borderRadius: 12,
+        background: isRecovered
+          ? "rgba(16, 185, 129, 0.08)"
+          : "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.04))",
+        border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.35)" : "rgba(245, 158, 11, 0.35)"}`,
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        boxShadow: isRecovered
+          ? "0 4px 20px rgba(16, 185, 129, 0.08)"
+          : "0 4px 20px rgba(245, 158, 11, 0.08)",
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: isRecovered ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)",
+              border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.4)" : "rgba(245, 158, 11, 0.4)"}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {isRecovered ? (
+              <CheckCircle2 size={16} style={{ color: "#34d399" }} />
+            ) : (
+              <ShieldAlert size={16} style={{ color: "#fbbf24" }} />
+            )}
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: isRecovered ? "#34d399" : "#fbbf24",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {isRecovered ? "Cooldown Complete — Ready" : "Rate Limit Cooldown Active"}
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--on-surface-variant)", opacity: 0.85 }}>
+              {isRecovered
+                ? "Throttling lifted. You can now send new messages."
+                : "Sliding-window quota exceeded (20 queries / min)"}
+            </div>
+          </div>
+        </div>
+
+        {/* Status / Countdown badge */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "4px 10px",
+            borderRadius: 20,
+            background: isRecovered ? "rgba(16, 185, 129, 0.16)" : "rgba(245, 158, 11, 0.16)",
+            border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.35)" : "rgba(245, 158, 11, 0.35)"}`,
+            fontSize: 11,
+            fontWeight: 700,
+            fontFamily: "monospace",
+            color: isRecovered ? "#34d399" : "#fbbf24",
+            flexShrink: 0,
+          }}
+        >
+          {isRecovered ? (
+            <span>Ready</span>
+          ) : (
+            <>
+              <Clock size={11} style={{ animation: "rh-spin 3s linear infinite" }} />
+              <span>{remaining}s</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Progress Bar (during cooldown) */}
+      {!isRecovered && (
+        <div
+          style={{
+            width: "100%",
+            height: 4,
+            borderRadius: 2,
+            background: "rgba(255, 255, 255, 0.08)",
+            overflow: "hidden",
+            position: "relative",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${progressPercent}%`,
+              background: "linear-gradient(90deg, #f59e0b, #fbbf24)",
+              borderRadius: 2,
+              transition: "width 1s linear",
+            }}
+          />
+        </div>
+      )}
+
+      {/* Detail description */}
+      <div
+        style={{
+          fontSize: 11.5,
+          lineHeight: 1.55,
+          color: "var(--on-surface)",
+          opacity: 0.88,
+        }}
+      >
+        {isRecovered
+          ? "Input field is unlocked. Feel free to resume querying your repository codebase."
+          : (message || "You have sent requests faster than the system threshold. Input is temporarily throttled to guarantee LLM capacity and backend responsiveness.")}
+      </div>
+    </div>
+  );
+}
+
 // ── Message Bubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
@@ -552,43 +716,62 @@ function MessageBubble({
             width: 22,
             height: 22,
             borderRadius: 7,
-            background: "color-mix(in srgb, var(--primary) 18%, transparent)",
-            border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)",
+            background: message.isRateLimited
+              ? "rgba(245, 158, 11, 0.18)"
+              : "color-mix(in srgb, var(--primary) 18%, transparent)",
+            border: `1px solid ${
+              message.isRateLimited
+                ? "rgba(245, 158, 11, 0.4)"
+                : "color-mix(in srgb, var(--primary) 30%, transparent)"
+            }`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
           }}
         >
-          <Bot size={12} style={{ color: "var(--primary)" }} />
+          {message.isRateLimited ? (
+            <ShieldAlert size={12} style={{ color: "#fbbf24" }} />
+          ) : (
+            <Bot size={12} style={{ color: "var(--primary)" }} />
+          )}
         </div>
         <span
           style={{
             fontSize: 9.5,
             fontWeight: 800,
-            color: "var(--on-surface-variant)",
+            color: message.isRateLimited ? "#fbbf24" : "var(--on-surface-variant)",
             letterSpacing: "0.1em",
             textTransform: "uppercase",
           }}
         >
-          RepoHawk
+          {message.isRateLimited ? "RepoHawk Guard" : "RepoHawk"}
         </span>
       </div>
 
       {/* Content bubble */}
       <div
         style={{
-          background: "var(--surface-container-high)",
-          border: `1px solid ${message.isError ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.06)"}`,
+          background: message.isRateLimited
+            ? "transparent"
+            : "var(--surface-container-high)",
+          border: message.isRateLimited
+            ? "none"
+            : `1px solid ${message.isError ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.06)"}`,
           borderRadius: "4px 13px 13px 13px",
-          padding: "10px 13px",
-          backdropFilter: "blur(10px)",
+          padding: message.isRateLimited ? 0 : "10px 13px",
+          backdropFilter: message.isRateLimited ? "none" : "blur(10px)",
           maxWidth: "100%",
           minWidth: 0,
           overflow: "hidden",
         }}
       >
-        {message.isLoading && !message.content ? (
+        {message.isRateLimited ? (
+          <RateLimitCooldownCard
+            initialSeconds={message.retryAfterSeconds || 30}
+            message={message.content}
+          />
+        ) : message.isLoading && !message.content ? (
           <TypingIndicator />
         ) : message.isError ? (
           <div
@@ -632,7 +815,7 @@ function MessageBubble({
       </div>
 
       {/* ── Action bar below bubble (Claude / ChatGPT style) ── */}
-      {!message.isLoading && !message.isError && message.content && (
+      {!message.isLoading && !message.isError && !message.isRateLimited && message.content && (
         <div
           style={{
             display: "flex",
@@ -730,6 +913,22 @@ export default function QAChatPanel({
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [rateLimitCooldown, setRateLimitCooldown] = useState<number>(0);
+
+  useEffect(() => {
+    if (rateLimitCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitCooldown]);
+
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -910,6 +1109,13 @@ export default function QAChatPanel({
   const sendMessage = useCallback(
     async (query: string) => {
       if (!query.trim() || isLoading) return;
+      if (rateLimitCooldown > 0) {
+        sileo.warning({
+          title: "Rate Limit Active",
+          description: `Please wait ${rateLimitCooldown}s before sending another query.`,
+        });
+        return;
+      }
 
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -957,6 +1163,33 @@ export default function QAChatPanel({
           }),
           signal: ctrl.signal,
         });
+
+        if (res.status === 429) {
+          const errBody = await res.json().catch(() => ({}));
+          const retrySecs = Number(errBody.retryAfter) || 30;
+          setRateLimitCooldown(retrySecs);
+          sileo.warning({
+            title: "Rate Limit Exceeded (429)",
+            description: `Cooling down for ${retrySecs} seconds. Input will automatically unlock.`,
+          });
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    isLoading: false,
+                    isStreaming: false,
+                    isRateLimited: true,
+                    retryAfterSeconds: retrySecs,
+                    content:
+                      errBody.error ||
+                      `Rate limit reached. Please wait ${retrySecs}s for cooldown.`,
+                  }
+                : m
+            )
+          );
+          return;
+        }
 
         if (!res.ok || !res.body) {
           const errBody = await res.json().catch(() => ({}));
@@ -1097,7 +1330,7 @@ export default function QAChatPanel({
         streamingIssuedSessionId.current = null;
       }
     },
-    [repoId, sessionId, isLoading, handleHighlightNode]
+    [repoId, sessionId, isLoading, rateLimitCooldown, handleHighlightNode]
   );
 
   // Stop the in-flight request (commit 7)
@@ -1108,6 +1341,7 @@ export default function QAChatPanel({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (rateLimitCooldown > 0) return;
       sendMessage(input);
     }
   };
@@ -1293,7 +1527,12 @@ export default function QAChatPanel({
                 <button
                   key={s}
                   type="button"
-                  onClick={(e) => { e.preventDefault(); sendMessage(s); }}
+                  disabled={rateLimitCooldown > 0}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (rateLimitCooldown > 0) return;
+                    sendMessage(s);
+                  }}
                   style={{
                     width: "100%",
                     textAlign: "left",
@@ -1303,7 +1542,8 @@ export default function QAChatPanel({
                     borderRadius: 9,
                     color: "var(--on-surface-variant)",
                     fontSize: 11.5,
-                    cursor: "pointer",
+                    cursor: rateLimitCooldown > 0 ? "not-allowed" : "pointer",
+                    opacity: rateLimitCooldown > 0 ? 0.4 : 1,
                     display: "flex",
                     alignItems: "center",
                     gap: 7,
@@ -1436,13 +1676,41 @@ export default function QAChatPanel({
                 </span> */}
               </div>
             )}
+            {/* Live rate limit cooldown banner */}
+            {rateLimitCooldown > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "6px 12px",
+                  background: "rgba(245, 158, 11, 0.08)",
+                  borderBottom: "1px solid rgba(245, 158, 11, 0.2)",
+                  fontSize: 11,
+                  color: "#fbbf24",
+                  fontWeight: 500,
+                  animation: "rh-fadeInUp 0.2s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <ShieldAlert size={12} style={{ color: "#f59e0b" }} />
+                  <span>Rate limit cooldown active &bull; Please wait</span>
+                </div>
+                <span style={{ fontWeight: 700, fontFamily: "monospace" }}>{rateLimitCooldown}s remaining</span>
+              </div>
+            )}
             <div style={{ padding: "9px 11px 7px" }}>
             <textarea
               ref={textareaRef}
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about the architecture…  (↵ send · ⇧↵ new line)"
+              disabled={rateLimitCooldown > 0}
+              placeholder={
+                rateLimitCooldown > 0
+                  ? `Rate limit active — cooling down (${rateLimitCooldown}s remaining)…`
+                  : "Ask about the architecture…  (↵ send · ⇧↵ new line)"
+              }
               rows={1}
               style={{
                 width: "100%",
@@ -1458,6 +1726,8 @@ export default function QAChatPanel({
                 maxHeight: 110,
                 overflowY: "auto",
                 caretColor: "var(--primary)",
+                opacity: rateLimitCooldown > 0 ? 0.5 : 1,
+                cursor: rateLimitCooldown > 0 ? "not-allowed" : "text",
               }}
             />
             <div
@@ -1475,8 +1745,30 @@ export default function QAChatPanel({
                 {repoId.slice(0, 8)}…
               </span>
 
-              {/* Send / Stop button */}
-              {isLoading ? (
+              {/* Send / Stop / Rate-limited cooldown button */}
+              {rateLimitCooldown > 0 ? (
+                <div
+                  title={`Rate limit cooldown: ${rateLimitCooldown}s remaining`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                    background: "rgba(245, 158, 11, 0.15)",
+                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                    color: "#fbbf24",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    fontFamily: "monospace",
+                    flexShrink: 0,
+                    userSelect: "none",
+                  }}
+                >
+                  <Clock size={11} style={{ animation: "rh-spin 3s linear infinite" }} />
+                  <span>{rateLimitCooldown}s</span>
+                </div>
+              ) : isLoading ? (
                 <button
                   type="button"
                   onClick={(e) => { e.preventDefault(); stopGeneration(); }}
