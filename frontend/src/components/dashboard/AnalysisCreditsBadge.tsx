@@ -59,28 +59,6 @@ export default function AnalysisCreditsBadge({
   const isExhausted = remaining === 0;
   const isLow = remaining <= 2 && remaining > 0;
 
-  // Visual color tokens
-  const badgeStyle = isExhausted
-    ? {
-        bg: "rgba(244, 63, 94, 0.12)",
-        border: "1px solid rgba(244, 63, 94, 0.35)",
-        text: "#fb7185",
-        iconColor: "#f43f5e",
-      }
-    : isLow
-    ? {
-        bg: "rgba(245, 158, 11, 0.12)",
-        border: "1px solid rgba(245, 158, 11, 0.35)",
-        text: "#fbbf24",
-        iconColor: "#f59e0b",
-      }
-    : {
-        bg: "rgba(99, 102, 241, 0.1)",
-        border: "1px solid rgba(99, 102, 241, 0.28)",
-        text: "#a5b4fc",
-        iconColor: "#818cf8",
-      };
-
   return (
     <div
       className={`relative inline-flex items-center ${className}`}
@@ -88,26 +66,58 @@ export default function AnalysisCreditsBadge({
       onMouseLeave={() => setShowTooltip(false)}
     >
       <div
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all select-none hover:opacity-90"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all select-none border backdrop-blur-md"
         style={{
-          background: badgeStyle.bg,
-          border: badgeStyle.border,
-          color: badgeStyle.text,
-          backdropFilter: "blur(8px)",
+          background: isExhausted
+            ? "color-mix(in srgb, #f43f5e 8%, var(--surface-container-low, #1c1b1b))"
+            : "var(--surface-container-low, #1c1b1b)",
+          borderColor: isExhausted
+            ? "color-mix(in srgb, #f43f5e 35%, transparent)"
+            : isLow
+            ? "color-mix(in srgb, #f59e0b 35%, var(--outline-variant, #464653))"
+            : "var(--outline-variant, #464653)",
+          color: "var(--on-surface, #e5e2e1)",
         }}
       >
         <Zap
           size={13}
-          fill={badgeStyle.iconColor}
+          fill={isExhausted ? "#f43f5e" : "#fbbf24"}
           style={{
-            color: badgeStyle.iconColor,
-            filter: `drop-shadow(0 0 6px ${badgeStyle.iconColor})`,
+            color: isExhausted ? "#f43f5e" : "#f59e0b",
+            filter: isExhausted
+              ? "drop-shadow(0 0 5px rgba(244, 63, 94, 0.5))"
+              : "drop-shadow(0 0 5px rgba(251, 191, 36, 0.55))",
           }}
+          className="shrink-0 transition-transform hover:scale-110"
         />
-        <span className="font-mono font-bold tracking-tight">
-          {loading ? "..." : `${remaining}/${total}`}
+
+        <div className="flex items-baseline gap-0.5">
+          <span
+            className="font-mono font-bold tracking-tight text-xs"
+            style={{
+              color: isExhausted
+                ? "#fb7185"
+                : isLow
+                ? "#fbbf24"
+                : "var(--on-surface, #ffffff)",
+            }}
+          >
+            {loading ? "—" : remaining}
+          </span>
+          <span
+            className="font-mono text-[10px] font-medium"
+            style={{ color: "var(--on-surface-variant, #908f9f)", opacity: 0.7 }}
+          >
+            /{total}
+          </span>
+        </div>
+
+        <span
+          className="text-[11px] font-medium hidden sm:inline"
+          style={{ color: "var(--on-surface-variant, #c6c5d5)" }}
+        >
+          Credits
         </span>
-        <span className="opacity-80 text-[11px] font-medium hidden sm:inline">Credits</span>
       </div>
 
       {/* Floating Explanatory Tooltip Popover */}
@@ -118,37 +128,52 @@ export default function AnalysisCreditsBadge({
             top: "calc(100% + 8px)",
             right: 0,
             zIndex: 50,
-            width: 230,
-            borderRadius: 12,
-            padding: "10px 12px",
-            background: "var(--surface-container-high, #1e1e24)",
-            border: "1px solid var(--outline-variant, rgba(255,255,255,0.12))",
-            boxShadow: "0 8px 28px rgba(0,0,0,0.4)",
-            backdropFilter: "blur(12px)",
+            width: 240,
+            borderRadius: 14,
+            padding: "12px 14px",
+            background: "var(--surface-container-high, #201f1f)",
+            border: "1px solid var(--outline-variant, #464653)",
+            boxShadow: "0 10px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)",
+            backdropFilter: "blur(16px)",
           }}
         >
-          <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/10">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+            <span
+              className="text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: "var(--on-surface-variant, #908f9f)" }}
+            >
               Analysis Quota
             </span>
             <span
-              className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded"
+              className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
               style={{
-                background: badgeStyle.bg,
-                color: badgeStyle.text,
+                background: isExhausted
+                  ? "rgba(244, 63, 94, 0.15)"
+                  : "rgba(245, 158, 11, 0.15)",
+                color: isExhausted ? "#fb7185" : "#fbbf24",
+                border: `1px solid ${isExhausted ? "rgba(244, 63, 94, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
               }}
             >
-              {remaining} / {total} left
+              <Zap size={10} fill="currentColor" />
+              {remaining} of {total} left
             </span>
           </div>
-          <p className="text-[11px] text-on-surface-variant leading-relaxed m-0">
+
+          <p
+            className="text-[11px] leading-relaxed m-0"
+            style={{ color: "var(--on-surface, #e5e2e1)" }}
+          >
             {used === 0
               ? "Each successfully analyzed repo consumes 1 credit."
               : `Used ${used} credit${used > 1 ? "s" : ""} for ${used} analyzed repo${used > 1 ? "s" : ""}.`}
           </p>
-          <div className="mt-2 pt-1.5 border-t border-white/5 flex items-center gap-1.5 text-[10px] text-on-surface-variant opacity-75">
-            <Clock size={10} />
-            <span>5 credits per hour sliding window</span>
+
+          <div
+            className="mt-2.5 pt-2 border-t border-white/5 flex items-center gap-1.5 text-[10px]"
+            style={{ color: "var(--on-surface-variant, #908f9f)" }}
+          >
+            <Clock size={11} className="shrink-0 opacity-80" />
+            <span>Quota refreshes hourly (sliding window)</span>
           </div>
         </div>
       )}
