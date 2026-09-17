@@ -32,7 +32,8 @@ import {
   Loader2,
   Trash2,
   Eye,
-  EyeOff
+  EyeOff,
+  Activity
 } from "lucide-react";
 import { sileo } from "sileo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -234,6 +235,11 @@ export default function RepoSidebar({ repoId }: RepoSidebarProps) {
     {
       section: "AI Tools", items: [
         { name: "Generate README", href: "#", icon: FileText, action: activeRepoId ? "generate-readme" : undefined }
+      ]
+    },
+    {
+      section: "System & AI", items: [
+        { name: "Observability", href: "/observability", icon: Activity }
       ]
     }
   ];
