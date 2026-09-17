@@ -335,22 +335,45 @@ export default function DashboardPage() {
               <div
                 key={repo.id}
                 onClick={() => router.push(`/repo/${repo.id}`)}
-                className="group relative p-5 rounded-2xl border border-outline-variant bg-surface-low hover:bg-surface-mid cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                className="group relative p-5 rounded-2xl border border-outline-variant bg-surface-low hover:bg-surface-mid cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl overflow-hidden"
               >
-                {/* Status indicator line */}
-                <div
-                  className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl transition-all"
-                  style={{
-                    background: repo.analysis_status === "complete"
-                      ? "#10b981"
-                      : repo.analysis_status === "running"
-                        ? "var(--primary)"
+                {/* Sleek Aurora / Laser Top Accent */}
+                <div className="absolute top-0 inset-x-0 h-[2px] overflow-hidden pointer-events-none">
+                  {/* Subtle top ambient aura glow */}
+                  <div
+                    className="absolute -top-3 left-1/2 -translate-x-1/2 w-40 h-7 blur-md opacity-40 group-hover:opacity-85 group-hover:w-60 transition-all duration-300"
+                    style={{
+                      background: repo.analysis_status === "complete"
+                        ? "radial-gradient(ellipse at top, #10b981, transparent 75%)"
+                        : repo.analysis_status === "running"
+                        ? "radial-gradient(ellipse at top, var(--primary), transparent 75%)"
                         : repo.analysis_status === "queued"
-                          ? "#f59e0b"
-                          : "#f43f5e",
-                    opacity: 0.7,
-                  }}
-                />
+                        ? "radial-gradient(ellipse at top, #f59e0b, transparent 75%)"
+                        : "radial-gradient(ellipse at top, #f43f5e, transparent 75%)",
+                    }}
+                  />
+
+                  {/* High-definition laser beam with soft tapered edges */}
+                  <div
+                    className="w-full h-full transition-all duration-300 group-hover:brightness-125"
+                    style={{
+                      background: repo.analysis_status === "complete"
+                        ? "linear-gradient(90deg, transparent 0%, rgba(16, 185, 129, 0.15) 12%, #10b981 40%, #6ee7b7 50%, #10b981 60%, rgba(16, 185, 129, 0.15) 88%, transparent 100%)"
+                        : repo.analysis_status === "running"
+                        ? "linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.15) 12%, var(--primary) 40%, #c7d2fe 50%, var(--primary) 60%, rgba(99, 102, 241, 0.15) 88%, transparent 100%)"
+                        : repo.analysis_status === "queued"
+                        ? "linear-gradient(90deg, transparent 0%, rgba(245, 158, 11, 0.15) 12%, #f59e0b 40%, #fde68a 50%, #f59e0b 60%, rgba(245, 158, 11, 0.15) 88%, transparent 100%)"
+                        : "linear-gradient(90deg, transparent 0%, rgba(244, 63, 94, 0.15) 12%, #f43f5e 40%, #fecdd3 50%, #f43f5e 60%, rgba(244, 63, 94, 0.15) 88%, transparent 100%)",
+                      boxShadow: repo.analysis_status === "complete"
+                        ? "0 0 12px rgba(52, 211, 153, 0.7)"
+                        : repo.analysis_status === "running"
+                        ? "0 0 12px rgba(99, 102, 241, 0.7)"
+                        : repo.analysis_status === "queued"
+                        ? "0 0 12px rgba(245, 158, 11, 0.7)"
+                        : "0 0 12px rgba(244, 63, 94, 0.7)",
+                    }}
+                  />
+                </div>
 
                 <div className="flex justify-between items-start gap-3 mb-4">
                   <div className="space-y-1 min-w-0 flex-1">
