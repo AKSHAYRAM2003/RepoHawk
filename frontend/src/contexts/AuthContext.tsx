@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode, useMemo } from "react";
+import { useUser, useClerk, useAuth as useClerkAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { sileo } from "sileo";
 
-interface User {
+export interface User {
   id: string;
   email: string;
   name: string | null;
@@ -27,97 +27,79 @@ interface AuthContextType {
   setLoginModalOpen: (open: boolean) => void;
   isSignupModalOpen: boolean;
   setSignupModalOpen: (open: boolean) => void;
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoginModalOpen, setLoginModalOpen] = useState(false);
-  const [isSignupModalOpen, setSignupModalOpen] = useState(false);
+  const { user: clerkUser, isLoaded, isSignedIn } = useUser();
+  const { signOut } = useClerk();
+  const { getToken } = useClerkAuth();
   const router = useRouter();
 
-  const fetchUser = useCallback(async () => {
-    try {
-      const res = await fetch("/api/auth/me");
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
-      } else {
-        setUser(null);
-      }
-    } catch {
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const [isLoginModalOpen, setLoginModalOpen] = useState(false);
+  const [isSignupModalOpen, setSignupModalOpen] = useState(false);
 
-  useEffect(() => { fetchUser(); }, [fetchUser]);
+  // Map Clerk user to RepoHawk User interface
+  const user: User | null = useMemo(() => {
+    if (!isSignedIn || !clerkUser) return null;
+    return {
+      id: clerkUser.id,
+      email: clerkUser.primaryEmailAddress?.emailAddress || "",
+      name: clerkUser.fullName || clerkUser.firstName || clerkUser.username || null,
+      is_verified: true,
+      github_id: null,
+      github_username: clerkUser.externalAccounts?.find(
+        (a) => (a.provider as string).includes("github")
+      )?.username || null,
+      avatar_url: clerkUser.imageUrl || null,
+      created_at: clerkUser.createdAt
+        ? new Date(clerkUser.createdAt).toISOString()
+        : new Date().toISOString(),
+    };
+  }, [isSignedIn, clerkUser]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("github_linked")) {
-      params.delete("github_linked");
-      const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
-      window.history.replaceState({}, "", newUrl);
-      fetchUser().then(() => {
-        sileo.success({ title: "GitHub account linked", description: "You can now connect repos and receive notifications" });
-      });
-    }
-    if (params.has("installed")) {
-      params.delete("installed");
-      const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
-      window.history.replaceState({}, "", newUrl);
-      fetchUser().then(() => {
-        sileo.success({ title: "GitHub App installed", description: "Webhook events will be processed automatically" });
-      });
-    }
-  }, [fetchUser]);
+  const login = async (_email: string, _password: string) => {
+    setLoginModalOpen(true);
+  };
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Login failed");
-    setUser(data.user);
-    router.push(`/dashboard/${data.user.id}`);
-  }, [router]);
+  const signup = async (_name: string, _email: string, _password: string) => {
+    setSignupModalOpen(true);
+  };
 
-  const signup = useCallback(async (name: string, email: string, password: string) => {
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Registration failed");
-    // Do NOT auto-login or redirect — user will sign in manually after registration
-  }, []);
-
-  const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setUser(null);
+  const logout = async () => {
+    await signOut({ redirectUrl: "/" });
     router.push("/");
-  }, [router]);
+  };
 
-  const updateProfile = useCallback(async (data: { name?: string; avatar_url?: string }) => {
-    const res = await fetch("/api/auth/me", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error("Failed to update profile");
-    const updated = await res.json();
-    setUser(updated);
-  }, []);
+  const updateProfile = async (data: { name?: string; avatar_url?: string }) => {
+    if (!clerkUser) return;
+    if (data.name) {
+      const parts = data.name.split(" ");
+      const firstName = parts[0];
+      const lastName = parts.slice(1).join(" ") || undefined;
+      await clerkUser.update({ firstName, lastName });
+    }
+  };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, signup, logout, updateProfile, isLoginModalOpen, setLoginModalOpen, isSignupModalOpen, setSignupModalOpen }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!isSignedIn,
+        isLoading: !isLoaded,
+        login,
+        signup,
+        logout,
+        updateProfile,
+        isLoginModalOpen,
+        setLoginModalOpen,
+        isSignupModalOpen,
+        setSignupModalOpen,
+        getToken,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

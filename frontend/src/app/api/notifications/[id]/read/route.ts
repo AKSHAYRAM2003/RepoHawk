@@ -4,10 +4,11 @@ export const dynamic = 'force-dynamic';
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000/api/v1";
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const cookie = req.headers.get("cookie") || "";
-    const response = await fetch(`${FASTAPI_URL}/notifications/${params.id}/read`, {
+    const response = await fetch(`${FASTAPI_URL}/notifications/${id}/read`, {
       method: "PUT",
       headers: { Cookie: cookie },
     });

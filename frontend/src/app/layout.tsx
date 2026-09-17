@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -61,15 +62,17 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col font-sans transition-colors duration-300">
-        <AuthProvider>
+        <ClerkProvider>
+          <AuthProvider>
           <ThemeProvider>
-            <ToastProvider>
-              {children}
-              <LoginModal />
-              <SignupModal />
-            </ToastProvider>
+          <ToastProvider>
+          {children}
+          <LoginModal />
+          <SignupModal />
+          </ToastProvider>
           </ThemeProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </ClerkProvider>
       </body>
     </html>
   );
