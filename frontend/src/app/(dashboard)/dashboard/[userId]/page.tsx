@@ -153,7 +153,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen p-6 md:p-10 max-w-7xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-outline-variant">
+      <div className="relative z-30 flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-outline-variant">
         <div>
           <p className="text-[11px] uppercase font-bold tracking-[0.12em] text-on-surface-variant opacity-60 mb-1">
             Workspace

@@ -295,7 +295,7 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
   if (diagramLoading || !diagram) {
     return (
       <div className="w-full h-full flex flex-col bg-surface">
-        <div className="flex items-center justify-between px-6 py-3 border-b border-outline-variant bg-surface-low backdrop-blur-xl shrink-0">
+        <div className="relative z-40 flex items-center justify-between px-6 py-3 border-b border-outline-variant bg-surface-low backdrop-blur-xl shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "color-mix(in srgb, #10b981 12%, transparent)", color: "#10b981" }}>
               <Workflow className="w-4 h-4" />
@@ -326,7 +326,7 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
       className="w-full h-full flex flex-col bg-surface"
     >
       {/* Header bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-outline-variant bg-surface-low backdrop-blur-xl shrink-0">
+      <div className="relative z-40 flex items-center justify-between px-6 py-3 border-b border-outline-variant bg-surface-low backdrop-blur-xl shrink-0">
         <div className="flex items-center gap-3">
           <motion.div
             initial={{ scale: 0, rotate: -180 }}
@@ -354,7 +354,7 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="flex items-center gap-3"
+          className="flex items-center gap-3 relative z-50"
         >
           <AnalysisCreditsBadge />
           <Link

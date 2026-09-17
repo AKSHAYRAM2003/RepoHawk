@@ -61,7 +61,7 @@ export default function AnalysisCreditsBadge({
 
   return (
     <div
-      className={`relative inline-flex items-center ${className}`}
+      className={`relative inline-flex items-center ${showTooltip ? "z-[100]" : "z-10"} ${className}`}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
@@ -127,13 +127,13 @@ export default function AnalysisCreditsBadge({
             position: "absolute",
             top: "calc(100% + 8px)",
             right: 0,
-            zIndex: 50,
+            zIndex: 9999,
             width: 240,
             borderRadius: 14,
             padding: "12px 14px",
             background: "var(--surface-container-high, #201f1f)",
             border: "1px solid var(--outline-variant, #464653)",
-            boxShadow: "0 10px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)",
+            boxShadow: "0 14px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08)",
             backdropFilter: "blur(16px)",
           }}
         >
