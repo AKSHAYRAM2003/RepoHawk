@@ -12,10 +12,15 @@ import {
   AlertCircle,
   Loader2,
   Trash2,
-  Plus
+  Plus,
+  Flame,
+  ShieldAlert,
+  CheckCircle2,
+  Sparkles
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { sileo } from "sileo";
 
 interface Repo {
   id: string;
@@ -38,6 +43,22 @@ export default function DashboardPage() {
   const [deletingRepoId, setDeletingRepoId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
+  const [rateLimitCooldown, setRateLimitCooldown] = useState<number>(0);
+
+  // Live countdown timer for rate limit cooldown
+  useEffect(() => {
+    if (rateLimitCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitCooldown]);
 
   // Redirect if userId doesn't match authenticated user
   useEffect(() => {
@@ -144,7 +165,55 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen p-6 md:p-10 max-w-7xl mx-auto space-y-10">
+    <div className="min-h-screen p-6 md:p-10 max-w-7xl mx-auto space-y-8">
+      {/* Injected Fire & Heat Animations */}
+      <style>{`
+        @keyframes rh-fireGlow {
+          0%, 100% {
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.35), 0 0 45px rgba(239, 68, 68, 0.2), inset 0 0 15px rgba(245, 158, 11, 0.1);
+            border-color: rgba(249, 115, 22, 0.55);
+          }
+          50% {
+            box-shadow: 0 0 35px rgba(249, 115, 22, 0.6), 0 0 70px rgba(239, 68, 68, 0.35), inset 0 0 25px rgba(245, 158, 11, 0.2);
+            border-color: rgba(239, 68, 68, 0.85);
+          }
+        }
+        @keyframes rh-fireFlicker {
+          0%, 100% {
+            transform: scale(1) rotate(-1deg);
+            filter: drop-shadow(0 0 6px #f97316) drop-shadow(0 0 12px #ef4444);
+          }
+          25% {
+            transform: scale(1.1) rotate(1.5deg);
+            filter: drop-shadow(0 0 10px #f59e0b) drop-shadow(0 0 18px #dc2626);
+          }
+          50% {
+            transform: scale(0.95) rotate(-2deg);
+            filter: drop-shadow(0 0 7px #ea580c) drop-shadow(0 0 14px #ef4444);
+          }
+          75% {
+            transform: scale(1.08) rotate(2deg);
+            filter: drop-shadow(0 0 12px #f97316) drop-shadow(0 0 20px #b91c1c);
+          }
+        }
+        @keyframes rh-emberRise {
+          0% {
+            transform: translateY(0) translateX(0) scale(1);
+            opacity: 0.95;
+          }
+          50% {
+            transform: translateY(-26px) translateX(6px) scale(0.85);
+            opacity: 0.7;
+          }
+          100% {
+            transform: translateY(-56px) translateX(-4px) scale(0.2);
+            opacity: 0;
+          }
+        }
+        @keyframes rh-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-outline-variant">
@@ -160,7 +229,47 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-start md:self-auto">
+        <div className="flex items-center gap-3 self-start md:self-auto flex-wrap">
+          {/* Fire Animation / Rate Limit Test Trigger */}
+          <button
+            onClick={() => {
+              if (rateLimitCooldown > 0) {
+                setRateLimitCooldown(0);
+                sileo.success({
+                  title: "System Cooled Down",
+                  description: "Rate limit restriction lifted. Ready for analysis.",
+                });
+              } else {
+                setRateLimitCooldown(60);
+                sileo.warning({
+                  title: "Rate Limit Triggered (429)",
+                  description: "Simulating 60s cooldown with fire animation.",
+                });
+              }
+            }}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer"
+            style={{
+              background: rateLimitCooldown > 0
+                ? "rgba(239, 68, 68, 0.15)"
+                : "rgba(249, 115, 22, 0.08)",
+              borderColor: rateLimitCooldown > 0
+                ? "rgba(239, 68, 68, 0.45)"
+                : "rgba(249, 115, 22, 0.3)",
+              color: rateLimitCooldown > 0 ? "#f87171" : "#fb923c",
+              boxShadow: rateLimitCooldown > 0 ? "0 0 14px rgba(239, 68, 68, 0.3)" : "none",
+            }}
+            title="Toggle rate limit cooldown fire animation"
+          >
+            <Flame
+              size={14}
+              style={{
+                color: rateLimitCooldown > 0 ? "#ef4444" : "#f97316",
+                animation: rateLimitCooldown > 0 ? "rh-fireFlicker 1.2s infinite ease-in-out" : "none",
+              }}
+            />
+            {rateLimitCooldown > 0 ? "Cool Down" : "Fire Test"}
+          </button>
+
           <button
             onClick={fetchRepos}
             disabled={loading}
@@ -169,6 +278,7 @@ export default function DashboardPage() {
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
             Refresh
           </button>
+
           <a
             href="https://github.com/apps/repohawk/installations/new"
             target="_blank"
@@ -195,16 +305,227 @@ export default function DashboardPage() {
             )}
             {githubConnected === true ? "Connected" : "Connect GitHub"}
           </a>
-          <Link
-            href={`/new-repo/${user?.id || ""}`}
 
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-on-primary bg-primary-accent hover:opacity-90 transition-all cursor-pointer"
-          >
-            <Plus size={13} />
-            New Repo
-          </Link>
+          {/* New Repo button — throttles when rate limited */}
+          {rateLimitCooldown > 0 ? (
+            <button
+              onClick={() => {
+                sileo.warning({
+                  title: "Rate Limit Active",
+                  description: `Please wait ${rateLimitCooldown}s for worker cooldown before analyzing new repos.`,
+                });
+              }}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-yellow-300 border border-amber-500/40 cursor-not-allowed transition-all"
+              style={{
+                background: "linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(249, 115, 22, 0.2))",
+                boxShadow: "0 0 12px rgba(249, 115, 22, 0.3)",
+              }}
+              title={`Rate limit active: ${rateLimitCooldown}s remaining`}
+            >
+              <Flame size={13} style={{ color: "#f97316", animation: "rh-fireFlicker 1.2s infinite ease-in-out" }} />
+              <span>Cooling ({rateLimitCooldown}s)</span>
+            </button>
+          ) : (
+            <Link
+              href={`/new-repo/${user?.id || ""}`}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-on-primary bg-primary-accent hover:opacity-90 transition-all cursor-pointer"
+            >
+              <Plus size={13} />
+              New Repo
+            </Link>
+          )}
         </div>
       </div>
+
+      {/* ── Rate Limit Overheat Fire Banner with Ember Animation ── */}
+      {rateLimitCooldown > 0 && (
+        <div
+          style={{
+            position: "relative",
+            borderRadius: 20,
+            padding: "20px 24px",
+            background: "radial-gradient(ellipse at 50% -20%, rgba(239, 68, 68, 0.26), rgba(249, 115, 22, 0.12), rgba(20, 20, 26, 0.9))",
+            border: "1px solid rgba(249, 115, 22, 0.6)",
+            animation: "rh-fireGlow 2.5s infinite ease-in-out",
+            overflow: "hidden",
+            backdropFilter: "blur(14px)",
+          }}
+        >
+          {/* Floating Animated Fire Embers */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              overflow: "hidden",
+              borderRadius: "inherit",
+            }}
+          >
+            {[
+              { left: "7%", delay: "0s", dur: "2.2s", size: 4, bg: "#fde047" },
+              { left: "21%", delay: "0.7s", dur: "2.5s", size: 3, bg: "#fb923c" },
+              { left: "36%", delay: "1.4s", dur: "1.9s", size: 5, bg: "#ef4444" },
+              { left: "52%", delay: "0.3s", dur: "2.4s", size: 4, bg: "#f59e0b" },
+              { left: "68%", delay: "1.1s", dur: "2.7s", size: 3, bg: "#fde047" },
+              { left: "81%", delay: "0.5s", dur: "2.1s", size: 5, bg: "#fb923c" },
+              { left: "93%", delay: "1.5s", dur: "2.3s", size: 4, bg: "#ef4444" },
+            ].map((ember, i) => (
+              <span
+                key={i}
+                style={{
+                  position: "absolute",
+                  bottom: "6px",
+                  left: ember.left,
+                  width: ember.size,
+                  height: ember.size,
+                  borderRadius: "50%",
+                  background: ember.bg,
+                  boxShadow: `0 0 8px ${ember.bg}, 0 0 16px ${ember.bg}`,
+                  animation: `rh-emberRise ${ember.dur} infinite ease-out`,
+                  animationDelay: ember.delay,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Content Row */}
+          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {/* Flame Icon with burning flicker */}
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(249, 115, 22, 0.2))",
+                    border: "1px solid rgba(249, 115, 22, 0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 0 20px rgba(249, 115, 22, 0.4)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Flame
+                    size={24}
+                    style={{
+                      color: "#f97316",
+                      animation: "rh-fireFlicker 1.4s infinite ease-in-out",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <h3
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 800,
+                        letterSpacing: "-0.01em",
+                        background: "linear-gradient(90deg, #fde047, #f97316, #ef4444)",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                        margin: 0,
+                      }}
+                    >
+                      Rate Limit Cooldown Active — System Hot
+                    </h3>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        padding: "2px 8px",
+                        borderRadius: 20,
+                        background: "rgba(239, 68, 68, 0.25)",
+                        border: "1px solid rgba(239, 68, 68, 0.5)",
+                        color: "#fca5a5",
+                      }}
+                    >
+                      HTTP 429 Throttle
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--on-surface-variant)", margin: "4px 0 0", opacity: 0.9 }}>
+                    Hourly analysis quota reached (5 repos / hour limit). Redis sliding-window queue is cooling down worker processes to preserve server memory.
+                  </p>
+                </div>
+              </div>
+
+              {/* Live Countdown Badge and Controls */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "6px 14px",
+                    borderRadius: 24,
+                    background: "rgba(239, 68, 68, 0.2)",
+                    border: "1px solid rgba(249, 115, 22, 0.5)",
+                    color: "#fbbf24",
+                    fontFamily: "monospace",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    boxShadow: "0 0 15px rgba(249, 115, 22, 0.25)",
+                  }}
+                >
+                  <Clock size={13} style={{ animation: "rh-spin 3s linear infinite" }} />
+                  <span>{rateLimitCooldown}s remaining</span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setRateLimitCooldown(0);
+                    sileo.success({
+                      title: "System Cooled Down",
+                      description: "Rate limit lifted manually.",
+                    });
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 10,
+                    background: "rgba(255, 255, 255, 0.08)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--on-surface)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  Cool Down Now
+                </button>
+              </div>
+            </div>
+
+            {/* Fiery Animated Progress Bar */}
+            <div
+              style={{
+                width: "100%",
+                height: 6,
+                borderRadius: 3,
+                background: "rgba(255, 255, 255, 0.08)",
+                overflow: "hidden",
+                position: "relative",
+                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${Math.max(0, Math.min(100, (rateLimitCooldown / 60) * 100))}%`,
+                  background: "linear-gradient(90deg, #ef4444, #f97316, #fde047)",
+                  borderRadius: 3,
+                  boxShadow: "0 0 10px #f97316, 0 0 20px #ef4444",
+                  transition: "width 1s linear",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       {!loading && repos.length > 0 && (

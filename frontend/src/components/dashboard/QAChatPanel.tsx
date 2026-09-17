@@ -18,7 +18,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowUp, Bot, FileCode, Zap, AlertCircle, Square,
   ChevronRight, Copy, Check, RefreshCw, ChevronDown, ChevronUp,
-  History, Plus, Trash2, Search, Clock, ShieldAlert, CheckCircle2
+  History, Plus, Trash2, Search, Clock, ShieldAlert, CheckCircle2, Flame
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -501,58 +501,107 @@ function RateLimitCooldownCard({
   return (
     <div
       style={{
-        borderRadius: 12,
+        position: "relative",
+        borderRadius: 14,
         background: isRecovered
           ? "rgba(16, 185, 129, 0.08)"
-          : "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.04))",
-        border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.35)" : "rgba(245, 158, 11, 0.35)"}`,
-        padding: "12px 14px",
+          : "radial-gradient(ellipse at 50% -20%, rgba(239, 68, 68, 0.25), rgba(249, 115, 22, 0.12), rgba(20, 20, 26, 0.95))",
+        border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.35)" : "rgba(249, 115, 22, 0.55)"}`,
+        padding: "14px 16px",
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: 12,
         boxShadow: isRecovered
           ? "0 4px 20px rgba(16, 185, 129, 0.08)"
-          : "0 4px 20px rgba(245, 158, 11, 0.08)",
+          : "0 0 24px rgba(249, 115, 22, 0.3)",
+        animation: isRecovered ? "none" : "rh-fireGlow 2.5s infinite ease-in-out",
+        overflow: "hidden",
         transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
+      {/* Floating Animated Fire Embers */}
+      {!isRecovered && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            overflow: "hidden",
+            borderRadius: "inherit",
+          }}
+        >
+          {[
+            { left: "10%", delay: "0s", dur: "2.1s", size: 3, bg: "#fde047" },
+            { left: "28%", delay: "0.8s", dur: "2.4s", size: 4, bg: "#fb923c" },
+            { left: "48%", delay: "1.4s", dur: "1.9s", size: 3, bg: "#ef4444" },
+            { left: "68%", delay: "0.4s", dur: "2.2s", size: 4, bg: "#f59e0b" },
+            { left: "86%", delay: "1.1s", dur: "2.5s", size: 3, bg: "#fde047" },
+          ].map((ember, i) => (
+            <span
+              key={i}
+              style={{
+                position: "absolute",
+                bottom: "4px",
+                left: ember.left,
+                width: ember.size,
+                height: ember.size,
+                borderRadius: "50%",
+                background: ember.bg,
+                boxShadow: `0 0 6px ${ember.bg}`,
+                animation: `rh-emberRise ${ember.dur} infinite ease-out`,
+                animationDelay: ember.delay,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: isRecovered ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)",
-              border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.4)" : "rgba(245, 158, 11, 0.4)"}`,
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: isRecovered
+                ? "rgba(16, 185, 129, 0.2)"
+                : "linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(249, 115, 22, 0.25))",
+              border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.4)" : "rgba(249, 115, 22, 0.6)"}`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
+              boxShadow: isRecovered ? "none" : "0 0 14px rgba(249, 115, 22, 0.35)",
             }}
           >
             {isRecovered ? (
-              <CheckCircle2 size={16} style={{ color: "#34d399" }} />
+              <CheckCircle2 size={18} style={{ color: "#34d399" }} />
             ) : (
-              <ShieldAlert size={16} style={{ color: "#fbbf24" }} />
+              <Flame
+                size={18}
+                style={{
+                  color: "#f97316",
+                  animation: "rh-fireFlicker 1.4s infinite ease-in-out",
+                }}
+              />
             )}
           </div>
           <div>
             <div
               style={{
-                fontSize: 13,
-                fontWeight: 700,
+                fontSize: 13.5,
+                fontWeight: 800,
                 color: isRecovered ? "#34d399" : "#fbbf24",
                 letterSpacing: "-0.01em",
               }}
             >
-              {isRecovered ? "Cooldown Complete — Ready" : "Rate Limit Cooldown Active"}
+              {isRecovered ? "Cooldown Complete — Ready" : "Rate Limit Active — Cooling Down"}
             </div>
             <div style={{ fontSize: 10.5, color: "var(--on-surface-variant)", opacity: 0.85 }}>
               {isRecovered
                 ? "Throttling lifted. You can now send new messages."
-                : "Sliding-window quota exceeded (20 queries / min)"}
+                : "Sliding-window quota exceeded (20 queries / min) • LLM tokens protected"}
             </div>
           </div>
         </div>
@@ -563,12 +612,12 @@ function RateLimitCooldownCard({
             display: "flex",
             alignItems: "center",
             gap: 5,
-            padding: "4px 10px",
+            padding: "4px 11px",
             borderRadius: 20,
-            background: isRecovered ? "rgba(16, 185, 129, 0.16)" : "rgba(245, 158, 11, 0.16)",
-            border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.35)" : "rgba(245, 158, 11, 0.35)"}`,
-            fontSize: 11,
-            fontWeight: 700,
+            background: isRecovered ? "rgba(16, 185, 129, 0.16)" : "rgba(239, 68, 68, 0.22)",
+            border: `1px solid ${isRecovered ? "rgba(16, 185, 129, 0.35)" : "rgba(249, 115, 22, 0.5)"}`,
+            fontSize: 11.5,
+            fontWeight: 800,
             fontFamily: "monospace",
             color: isRecovered ? "#34d399" : "#fbbf24",
             flexShrink: 0,
@@ -589,20 +638,23 @@ function RateLimitCooldownCard({
       {!isRecovered && (
         <div
           style={{
+            position: "relative",
+            zIndex: 1,
             width: "100%",
-            height: 4,
-            borderRadius: 2,
+            height: 5,
+            borderRadius: 2.5,
             background: "rgba(255, 255, 255, 0.08)",
             overflow: "hidden",
-            position: "relative",
+            boxShadow: "inset 0 1px 2px rgba(0,0,0,0.5)",
           }}
         >
           <div
             style={{
               height: "100%",
               width: `${progressPercent}%`,
-              background: "linear-gradient(90deg, #f59e0b, #fbbf24)",
-              borderRadius: 2,
+              background: "linear-gradient(90deg, #ef4444, #f97316, #fde047)",
+              borderRadius: 2.5,
+              boxShadow: "0 0 10px #f97316, 0 0 18px #ef4444",
               transition: "width 1s linear",
             }}
           />
@@ -612,6 +664,8 @@ function RateLimitCooldownCard({
       {/* Detail description */}
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           fontSize: 11.5,
           lineHeight: 1.55,
           color: "var(--on-surface)",
@@ -1360,6 +1414,48 @@ export default function QAChatPanel({
         }
         @keyframes rh-spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes rh-fireGlow {
+          0%, 100% {
+            box-shadow: 0 0 16px rgba(249, 115, 22, 0.35), 0 0 35px rgba(239, 68, 68, 0.2), inset 0 0 12px rgba(245, 158, 11, 0.1);
+            border-color: rgba(249, 115, 22, 0.55);
+          }
+          50% {
+            box-shadow: 0 0 28px rgba(249, 115, 22, 0.55), 0 0 55px rgba(239, 68, 68, 0.3), inset 0 0 20px rgba(245, 158, 11, 0.2);
+            border-color: rgba(239, 68, 68, 0.85);
+          }
+        }
+        @keyframes rh-fireFlicker {
+          0%, 100% {
+            transform: scale(1) rotate(-1deg);
+            filter: drop-shadow(0 0 5px #f97316) drop-shadow(0 0 10px #ef4444);
+          }
+          25% {
+            transform: scale(1.1) rotate(1.5deg);
+            filter: drop-shadow(0 0 8px #f59e0b) drop-shadow(0 0 14px #dc2626);
+          }
+          50% {
+            transform: scale(0.95) rotate(-2deg);
+            filter: drop-shadow(0 0 6px #ea580c) drop-shadow(0 0 12px #ef4444);
+          }
+          75% {
+            transform: scale(1.08) rotate(2deg);
+            filter: drop-shadow(0 0 10px #f97316) drop-shadow(0 0 16px #b91c1c);
+          }
+        }
+        @keyframes rh-emberRise {
+          0% {
+            transform: translateY(0) translateX(0) scale(1);
+            opacity: 0.95;
+          }
+          50% {
+            transform: translateY(-24px) translateX(5px) scale(0.8);
+            opacity: 0.65;
+          }
+          100% {
+            transform: translateY(-48px) translateX(-3px) scale(0.2);
+            opacity: 0;
+          }
         }
         @keyframes rh-blink {
           0%, 50% { opacity: 0.85; }

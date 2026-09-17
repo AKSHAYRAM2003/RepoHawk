@@ -37,7 +37,19 @@ export async function POST(req: Request) {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Failed to communicate with agent layer" }, { status: response.status });
+      const errText = await response.text().catch(() => "");
+      let errJson: any = {};
+      try { errJson = JSON.parse(errText); } catch {}
+      const retryAfter = response.headers.get("Retry-After");
+      const headers: Record<string, string> = {};
+      if (retryAfter) headers["Retry-After"] = retryAfter;
+      return NextResponse.json(
+        {
+          error: errJson.detail || errJson.error || "Failed to communicate with agent layer",
+          retryAfter: retryAfter ? Number(retryAfter) : undefined,
+        },
+        { status: response.status, headers }
+      );
     }
 
     const data = await response.json();
