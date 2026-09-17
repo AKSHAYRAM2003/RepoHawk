@@ -187,14 +187,115 @@ function CollapsibleCodeBlock({ lang, code }: { lang: string; code: string }) {
 
 const MarkdownComponents: import("react-markdown").Components = {
   p: ({ children }) => (
-    <p style={{ fontSize: 12.5, color: "var(--on-surface-variant)", lineHeight: 1.7, margin: "4px 0" }}>
+    <p style={{ fontSize: 12.5, color: "var(--on-surface-variant)", lineHeight: 1.7, margin: "4px 0", wordBreak: "break-word", overflowWrap: "anywhere" }}>
       {children}
     </p>
   ),
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>
+    <a href={href} target="_blank" rel="noreferrer" style={{ color: "var(--primary)", textDecoration: "underline", wordBreak: "break-word" }}>
       {children}
     </a>
+  ),
+  table: ({ children, ...props }: any) => (
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        overflowX: "auto",
+        margin: "12px 0 16px",
+        borderRadius: 10,
+        border: "1px solid var(--outline-variant)",
+        background: "color-mix(in srgb, var(--surface-container-highest) 35%, transparent)",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
+        scrollbarWidth: "thin",
+        scrollbarColor: "rgba(99,102,241,0.3) transparent",
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
+      <table
+        style={{
+          width: "100%",
+          minWidth: "max-content",
+          borderCollapse: "separate",
+          borderSpacing: 0,
+          fontSize: 12,
+          textAlign: "left",
+          lineHeight: 1.55,
+        }}
+        {...props}
+      >
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }: any) => (
+    <thead
+      style={{
+        background: "color-mix(in srgb, var(--surface-container-highest) 90%, transparent)",
+        borderBottom: "1px solid var(--outline-variant)",
+      }}
+      {...props}
+    >
+      {children}
+    </thead>
+  ),
+  tbody: ({ children, ...props }: any) => (
+    <tbody {...props}>
+      {children}
+    </tbody>
+  ),
+  tr: ({ children, ...props }: any) => (
+    <tr
+      style={{
+        borderBottom: "1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent)",
+        transition: "background 0.15s ease",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLTableRowElement).style.background =
+          "color-mix(in srgb, var(--primary) 7%, transparent)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLTableRowElement).style.background = "transparent";
+      }}
+      {...props}
+    >
+      {children}
+    </tr>
+  ),
+  th: ({ children, ...props }: any) => (
+    <th
+      style={{
+        padding: "9px 13px",
+        fontWeight: 700,
+        color: "var(--on-surface)",
+        fontSize: 11.5,
+        letterSpacing: "0.02em",
+        whiteSpace: "nowrap",
+        borderRight: "1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent)",
+        borderBottom: "1px solid var(--outline-variant)",
+      }}
+      {...props}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: any) => (
+    <td
+      style={{
+        padding: "8px 13px",
+        color: "var(--on-surface-variant)",
+        fontSize: 11.5,
+        lineHeight: 1.6,
+        verticalAlign: "top",
+        wordBreak: "break-word",
+        overflowWrap: "anywhere",
+        borderRight: "1px solid color-mix(in srgb, var(--outline-variant) 25%, transparent)",
+        borderBottom: "1px solid color-mix(in srgb, var(--outline-variant) 25%, transparent)",
+      }}
+      {...props}
+    >
+      {children}
+    </td>
   ),
   ul: ({ children }) => (
     <ul style={{ margin: "5px 0", paddingLeft: 16, listStyle: "none" }}>
@@ -210,16 +311,16 @@ const MarkdownComponents: import("react-markdown").Components = {
     // Basic detection for unordered list items to add custom bullet
     const isOrdered = className?.includes("ordered");
     return (
-      <li style={{ fontSize: 12.5, color: "var(--on-surface-variant)", lineHeight: 1.65, marginBottom: 3, display: "flex", alignItems: "flex-start", gap: 6 }}>
+      <li style={{ fontSize: 12.5, color: "var(--on-surface-variant)", lineHeight: 1.65, marginBottom: 3, display: "flex", alignItems: "flex-start", gap: 6, wordBreak: "break-word", overflowWrap: "anywhere" }}>
         {!isOrdered && <span style={{ color: "var(--primary)", marginTop: 2, flexShrink: 0 }}>▸</span>}
-        <span style={{flex: 1}}>{children}</span>
+        <span style={{flex: 1, minWidth: 0}}>{children}</span>
       </li>
     );
   },
-  h1: ({ children }) => <div style={{ fontSize: 16, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 4 }}>{children}</div>,
-  h2: ({ children }) => <div style={{ fontSize: 15, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 4 }}>{children}</div>,
-  h3: ({ children }) => <div style={{ fontSize: 14, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6 }}>{children}</div>,
-  h4: ({ children }) => <div style={{ fontSize: 13, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6 }}>{children}</div>,
+  h1: ({ children }) => <div style={{ fontSize: 16, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 4, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</div>,
+  h2: ({ children }) => <div style={{ fontSize: 15, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 4, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</div>,
+  h3: ({ children }) => <div style={{ fontSize: 14, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</div>,
+  h4: ({ children }) => <div style={{ fontSize: 13, fontWeight: 600, color: "var(--on-surface)", marginTop: 14, marginBottom: 6, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</div>,
   strong: ({ children }) => <strong style={{ color: "var(--on-surface)", fontWeight: 700 }}>{children}</strong>,
   code({ node, inline, className, children, ...props }: any) {
     const match = /language-(\w+)/.exec(className || "");
@@ -239,6 +340,8 @@ const MarkdownComponents: import("react-markdown").Components = {
           borderRadius: 4,
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
           fontSize: 11.5,
+          wordBreak: "break-word",
+          overflowWrap: "anywhere",
         }}
         {...props}
       >
@@ -417,6 +520,8 @@ function MessageBubble({
               color: "var(--on-surface)",
               lineHeight: 1.55,
               margin: 0,
+              wordBreak: "break-word",
+              overflowWrap: "anywhere",
             }}
           >
             {message.content}
@@ -434,8 +539,10 @@ function MessageBubble({
         display: "flex",
         flexDirection: "column",
         gap: 4,
-        marginBottom: 4,
+        marginBottom: 8,
         animation: "rh-fadeInUp 0.18s ease",
+        maxWidth: "100%",
+        minWidth: 0,
       }}
     >
       {/* Bot header row */}
@@ -476,6 +583,9 @@ function MessageBubble({
           borderRadius: "4px 13px 13px 13px",
           padding: "10px 13px",
           backdropFilter: "blur(10px)",
+          maxWidth: "100%",
+          minWidth: 0,
+          overflow: "hidden",
         }}
       >
         {message.isLoading && !message.content ? (
@@ -490,12 +600,12 @@ function MessageBubble({
             }}
           >
             <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 2 }} />
-            <p style={{ fontSize: 12.5, margin: 0, lineHeight: 1.6 }}>
+            <p style={{ fontSize: 12.5, margin: 0, lineHeight: 1.6, wordBreak: "break-word" }}>
               {message.content}
             </p>
           </div>
         ) : (
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", minWidth: 0, maxWidth: "100%", overflowWrap: "break-word" }}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={MarkdownComponents}
@@ -1228,8 +1338,11 @@ export default function QAChatPanel({
           <div
             style={{
               flex: 1,
+              minHeight: 0,
+              minWidth: 0,
               overflowY: "auto",
-              padding: "12px 13px 4px",
+              overflowX: "hidden",
+              padding: "12px 13px 20px",
               scrollbarWidth: "thin",
               scrollbarColor: "rgba(99,102,241,0.2) transparent",
             }}
@@ -1242,16 +1355,17 @@ export default function QAChatPanel({
                 onHighlightFile={handleHighlightFile}
               />
             ))}
-            <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} style={{ height: 16, minHeight: 16 }} />
           </div>
         )}
 
         {/* ── Input area ────────────────────────────────────────── */}
         <div
           style={{
+            flexShrink: 0,
             padding: "8px 12px 12px",
             borderTop: "1px solid var(--outline-variant)",
-            background: "color-mix(in srgb, var(--surface-container) 70%, transparent)",
+            background: "color-mix(in srgb, var(--surface-container) 95%, transparent)",
             backdropFilter: "blur(12px)",
           }}
         >

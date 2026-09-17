@@ -491,7 +491,29 @@ async def astream_qa_answer(
     yield {"type": "session", "session_id": session_id}
 
     try:
-        # 1. Query rewriting (always run — falls back gracefully if no history)
+        # 1. Guardrail check (Block malicious/off-topic questions)
+        from app.agents.nodes.guardrail import run_input_guardrail
+        is_safe = await run_input_guardrail(question)
+        if not is_safe:
+            yield {
+                "type": "token",
+                "delta": "I'm sorry, I cannot answer that request. Please ask a question related to software engineering or the codebase."
+            }
+            yield {"type": "sources", "files": [], "highlight_node_id": "", "code_ref": None}
+            yield {
+                "type": "metrics",
+                "latency_total_ms": int((_time.monotonic() - started_at) * 1000),
+                "num_chunks_retrieved": 0,
+                "num_chunks_kept": 0,
+                "latency_retrieval_ms": 0,
+                "latency_llm_ms": 0,
+                "rewritten_question": question,
+                "error": "Blocked by guardrail",
+            }
+            yield {"type": "done"}
+            return
+
+        # 2. Query rewriting (always run — falls back gracefully if no history)
         rewritten_question = question
         try:
             rewritten_question = await rewrite_query(question, chat_history)
@@ -499,7 +521,7 @@ async def astream_qa_answer(
             logger.warning(f"QA stream: rewrite failed ({e}), using original")
             rewritten_question = question
 
-        # 2. Embed (async to avoid blocking the event loop)
+        # 3. Embed (async to avoid blocking the event loop)
         embeddings_client = get_embeddings()
         try:
             query_vector = await embeddings_client.embed_query_async(rewritten_question)

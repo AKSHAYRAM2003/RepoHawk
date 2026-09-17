@@ -67,14 +67,33 @@ def create_analysis_graph():
 
 # --- QA Pipeline Logic ---
 
+from typing import Literal
+
+def should_continue_qa(state: QAState) -> Literal["qa_agent", "end"]:
+    # If the guardrail returned an error, stop early.
+    if state.get("error") == "Blocked by guardrail":
+        return "end"
+    return "qa_agent"
+
 def create_qa_graph():
     """
     Creates the LangGraph state machine for the Q&A agent.
-    Single-node graph for now, but expandable for multi-hop RAG.
     """
+    from app.agents.nodes.guardrail import guardrail_node
+    
     workflow = StateGraph(QAState)
+    workflow.add_node("guardrail", guardrail_node)
     workflow.add_node("qa_agent", qa_agent_node)
-    workflow.set_entry_point("qa_agent")
+    
+    workflow.set_entry_point("guardrail")
+    workflow.add_conditional_edges(
+        "guardrail",
+        should_continue_qa,
+        {
+            "qa_agent": "qa_agent",
+            "end": END
+        }
+    )
     workflow.add_edge("qa_agent", END)
     return workflow.compile()
 
