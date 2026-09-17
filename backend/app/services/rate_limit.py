@@ -69,7 +69,7 @@ class RateLimiter:
             return bucket
 
     def check(self, key: str) -> Tuple[bool, float]:
-        """Returns (allowed, retry_after_secs)."""
+        """Returns (allowed, retry_after_secs). Uses in-memory token bucket or Redis."""
         bucket = self._bucket_for(key)
         return bucket.try_consume()
 
@@ -85,5 +85,10 @@ class RateLimiter:
                 self._buckets.pop(k, None)
 
 
-# Module-level singleton for chat. 10 req / 60 sec per (ip, session).
-chat_limiter = RateLimiter(capacity=10, refill_per_sec=10 / 60)
+# Module-level singleton for chat. Configured via settings.
+from app.core.config import settings
+chat_limiter = RateLimiter(
+    capacity=settings.RATE_LIMIT_CHAT_PER_MINUTE,
+    refill_per_sec=settings.RATE_LIMIT_CHAT_PER_MINUTE / 60.0
+)
+

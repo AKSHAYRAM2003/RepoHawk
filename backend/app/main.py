@@ -6,8 +6,23 @@ from fastapi.middleware.cors import CORSMiddleware
 # Bootstrap SQLAlchemy models registry to avoid InvalidRequestError
 from app.models.base import Base
 
-from app.api.v1.routers import repos, chat, auth, github, notifications
+from app.api.v1.routers import repos, chat, auth, github, notifications, observability, health
 from app.core.config import settings
+
+# Configure Sentry error tracking if DSN is configured
+if settings.SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            environment=settings.ENVIRONMENT,
+            traces_sample_rate=0.1,
+            integrations=[FastApiIntegration()],
+        )
+        logging.info("Initialized Sentry error tracking")
+    except Exception as _sentry_err:
+        logging.warning(f"Sentry init failed: {_sentry_err}")
 
 # Configure logging
 logging.basicConfig(
@@ -127,6 +142,8 @@ app.include_router(chat.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(github.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(observability.router, prefix="/api/v1")
+app.include_router(health.router)
 
 
 @app.get("/")

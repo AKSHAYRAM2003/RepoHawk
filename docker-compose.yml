@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # ── PostgreSQL with pgvector ────────────────────────────────────────────────
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: repohawk_postgres
     environment:
       POSTGRES_USER: repohawk_user
@@ -18,8 +18,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  # ── RepoHawk API ───────────────────────────────────────────────────────────
+  # ── Redis (Broker, Rate Limiter & Pub/Sub) ──────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: repohawk_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── RepoHawk FastAPI Web API ───────────────────────────────────────────────
   api:
     build:
       context: ./backend
@@ -29,19 +45,47 @@ services:
       - "8000:8000"
     env_file:
       - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://repohawk_user:repohawk_password@postgres:5432/repohawk_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - chroma_db:/app/chroma_db
       - chroma_data:/app/chroma_data
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
-# NOTE: ChromaDB is not run as a separate service. RepoHawk uses an embedded,
-# on-disk ChromaDB PersistentClient (backend/chroma_db/), so no Chroma server
-# container is required.
+  # ── RepoHawk Celery Background Worker ──────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: repohawk_worker
+    command: celery -A app.tasks.celery_app.celery_app worker -l INFO -Q repo_indexing,maintenance,celery -c 2
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://repohawk_user:repohawk_password@postgres:5432/repohawk_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - chroma_db:/app/chroma_db
+      - chroma_data:/app/chroma_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:
   chroma_db:
   chroma_data:

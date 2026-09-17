@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     RESEND_PASSWORD_RESET_TEMPLATE_ID: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
     API_URL: str = "http://localhost:8000"
+    CLERK_SECRET_KEY: str = ""
 
     # GitHub App
     GITHUB_APP_ID: str = ""
@@ -42,6 +43,20 @@ class Settings(BaseSettings):
     GITHUB_WEBHOOK_SECRET: str = ""
     GITHUB_APP_CLIENT_ID: str = ""
     GITHUB_APP_CLIENT_SECRET: str = ""
+
+    # Production Infrastructure
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+    VECTOR_STORE_BACKEND: str = "chroma"  # "chroma" or "pgvector"
+    SENTRY_DSN: str = ""
+    ENVIRONMENT: str = "development"
+    
+    # Rate Limiting & Safety Guardrails
+    RATE_LIMIT_ANALYSIS_PER_HOUR: int = 5
+    RATE_LIMIT_CHAT_PER_MINUTE: int = 20
+    MAX_REPO_SIZE_MB: int = 150
+    MAX_PARSE_FILES: int = 5000
     
     class Config:
         env_file = ".env"

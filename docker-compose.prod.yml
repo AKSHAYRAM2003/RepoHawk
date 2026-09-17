@@ -1,21 +1,103 @@
 version: '3.8'
 
 services:
-  # ── RepoHawk API (Production) ──────────────────────────────────────────────
+  # ── PostgreSQL (pgvector) ───────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: repohawk_prod_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-repohawk_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-repohawk_password}
+      POSTGRES_DB: ${POSTGRES_DB:-repohawk_db}
+    volumes:
+      - prod_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-repohawk_user} -d ${POSTGRES_DB:-repohawk_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: repohawk_prod_redis
+    volumes:
+      - prod_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # ── FastAPI Backend API ────────────────────────────────────────────────────
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: repohawk_api
+    container_name: repohawk_prod_api
     ports:
       - "8000:8000"
     env_file:
       - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-repohawk_user}:${POSTGRES_PASSWORD:-repohawk_password}@postgres:5432/${POSTGRES_DB:-repohawk_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - VECTOR_STORE_BACKEND=pgvector
+      - ENVIRONMENT=production
     volumes:
-      - chroma_db:/app/chroma_db
-      - chroma_data:/app/chroma_data
-    restart: unless-stopped
+      - prod_chroma_db:/app/chroma_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  # ── Celery Worker Daemon ───────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: repohawk_prod_worker
+    command: celery -A app.tasks.celery_app.celery_app worker -l INFO -Q repo_indexing,maintenance,celery -c 4
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-repohawk_user}:${POSTGRES_PASSWORD:-repohawk_password}@postgres:5432/${POSTGRES_DB:-repohawk_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - VECTOR_STORE_BACKEND=pgvector
+      - ENVIRONMENT=production
+    volumes:
+      - prod_chroma_db:/app/chroma_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  # ── Next.js Frontend ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: repohawk_prod_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+      - FASTAPI_URL=http://api:8000/api/v1
+    depends_on:
+      - api
+    restart: always
 
 volumes:
-  chroma_db:
-  chroma_data:
+  prod_postgres_data:
+  prod_redis_data:
+  prod_chroma_db:

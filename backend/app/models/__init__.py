@@ -6,4 +6,5 @@ from app.models.github import GitHubInstallation, GitHubRepo
 from app.models.notification import Notification
 from app.models.notification_preference import NotificationPreference
 from app.models.user_session import UserSession
-__all__ = ["Base", "Repo", "Diagram", "ChatSession", "ChatMessage", "GitHubInstallation", "GitHubRepo", "Notification", "NotificationPreference", "UserSession"]
+from app.models.repo_embedding import RepoEmbedding
+__all__ = ["Base", "Repo", "Diagram", "ChatSession", "ChatMessage", "GitHubInstallation", "GitHubRepo", "Notification", "NotificationPreference", "UserSession", "RepoEmbedding"]

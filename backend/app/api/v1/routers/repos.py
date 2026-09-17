@@ -53,6 +53,10 @@ async def analyze_repo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.core.rate_limit import repo_analysis_limiter, validate_repo_size_limit
+    # Enforce repo size limits (reject repos > 150MB)
+    await validate_repo_size_limit(payload.github_url)
+
     parts = payload.github_url.rstrip("/").split("/")
     repo_name = parts[-1]
     repo_owner = parts[-2] if len(parts) > 1 else "unknown"
@@ -68,7 +72,15 @@ async def analyze_repo(
     await db.commit()
     await db.refresh(new_repo)
 
-    background_tasks.add_task(run_repo_analysis, new_repo.id, async_session_maker)
+    # Decoupled Worker Architecture (Celery + Redis) with local fallback
+    try:
+        from app.tasks.repo_tasks import analyze_repo_task
+        task = analyze_repo_task.delay(str(new_repo.id))
+        logger.info(f"Dispatched repo {new_repo.id} to Celery worker (Task ID: {task.id})")
+    except Exception as err:
+        logger.warning(f"Celery broker unavailable ({err}), executing via in-process background worker")
+        background_tasks.add_task(run_repo_analysis, new_repo.id, async_session_maker)
+
     return new_repo
 
 @router.get("/", response_model=List[RepoResponse])

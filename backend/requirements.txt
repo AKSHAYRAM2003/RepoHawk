@@ -25,3 +25,9 @@ bcrypt==4.0.1
 python-multipart==0.0.9
 sentence-transformers==5.1.2
 torch>=2.0.0
+langsmith>=0.1.0
+clerk-backend-api
+celery>=5.3.6
+redis>=5.0.3
+pgvector>=0.2.5
+sentry-sdk[fastapi]>=2.0.0
