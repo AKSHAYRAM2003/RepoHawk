@@ -18,6 +18,7 @@ import { useRepoAnalysis } from "@/hooks/useRepoAnalysis";
 import { useDiagram } from "@/hooks/useDiagram";
 import DiagramCanvas from "@/components/diagram/DiagramCanvas";
 import Link from "next/link";
+import AnalysisCreditsBadge from "@/components/dashboard/AnalysisCreditsBadge";
 
 export default function ArchitectureCanvasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
@@ -304,6 +305,7 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
               <div className="h-3 w-24 bg-surface-highest rounded mt-1.5 animate-pulse" />
             </div>
           </div>
+          <AnalysisCreditsBadge />
         </div>
         <div className="flex-1 flex items-center justify-center bg-surface">
           <div className="flex flex-col items-center gap-4">
@@ -352,10 +354,12 @@ export default function ArchitectureCanvasPage({ params }: { params: Promise<{ i
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
+          className="flex items-center gap-3"
         >
+          <AnalysisCreditsBadge />
           <Link
             href={`/repo/${id}/logs`}
-            className="text-xs text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1"
+            className="text-xs text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-outline-variant hover-surface"
           >
             <Terminal className="w-3.5 h-3.5" />
             Pipeline Logs
