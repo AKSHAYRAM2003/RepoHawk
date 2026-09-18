@@ -65,50 +65,57 @@ export default function AnalysisCreditsBadge({
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      {/* Pill Badge */}
       <div
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all select-none border backdrop-blur-md shadow-sm ${
-          isExhausted
-            ? "bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/35 dark:text-rose-300"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all select-none border backdrop-blur-md"
+        style={{
+          background: isExhausted
+            ? "color-mix(in srgb, #f43f5e 8%, var(--surface-container-low, #1c1b1b))"
+            : "var(--surface-container-low, #1c1b1b)",
+          borderColor: isExhausted
+            ? "color-mix(in srgb, #f43f5e 35%, transparent)"
             : isLow
-            ? "bg-amber-50/80 border-amber-300/80 text-amber-900 dark:bg-amber-500/10 dark:border-amber-500/35 dark:text-amber-300"
-            : "bg-surface-container-low border-outline-variant text-on-surface hover:border-outline"
-        }`}
+            ? "color-mix(in srgb, #f59e0b 35%, var(--outline-variant, #464653))"
+            : "var(--outline-variant, #464653)",
+          color: "var(--on-surface, #e5e2e1)",
+        }}
       >
         <Zap
           size={13}
-          className={`shrink-0 transition-transform hover:scale-110 ${
-            isExhausted
-              ? "text-rose-500 fill-rose-500"
-              : isLow
-              ? "text-amber-500 fill-amber-500 dark:text-amber-400 dark:fill-amber-400"
-              : "text-amber-500 fill-amber-500 dark:text-amber-400 dark:fill-amber-400"
-          }`}
+          fill={isExhausted ? "#f43f5e" : "#fbbf24"}
           style={{
+            color: isExhausted ? "#f43f5e" : "#f59e0b",
             filter: isExhausted
-              ? "drop-shadow(0 0 4px rgba(244, 63, 94, 0.4))"
-              : "drop-shadow(0 0 4px rgba(245, 158, 11, 0.45))",
+              ? "drop-shadow(0 0 5px rgba(244, 63, 94, 0.5))"
+              : "drop-shadow(0 0 5px rgba(251, 191, 36, 0.55))",
           }}
+          className="shrink-0 transition-transform hover:scale-110"
         />
 
-        <div className="flex items-baseline gap-0.5 font-mono">
+        <div className="flex items-baseline gap-0.5">
           <span
-            className={`font-bold tracking-tight text-xs ${
-              isExhausted
-                ? "text-rose-600 dark:text-rose-300"
+            className="font-mono font-bold tracking-tight text-xs"
+            style={{
+              color: isExhausted
+                ? "#fb7185"
                 : isLow
-                ? "text-amber-700 dark:text-amber-300"
-                : "text-on-surface"
-            }`}
+                ? "#fbbf24"
+                : "var(--on-surface, #ffffff)",
+            }}
           >
             {loading ? "—" : remaining}
           </span>
-          <span className="text-[10.5px] font-medium text-on-surface-variant opacity-60">
+          <span
+            className="font-mono text-[10px] font-medium"
+            style={{ color: "var(--on-surface-variant, #908f9f)", opacity: 0.7 }}
+          >
             /{total}
           </span>
         </div>
 
-        <span className="text-[11px] font-medium text-on-surface-variant hidden sm:inline">
+        <span
+          className="text-[11px] font-medium hidden sm:inline"
+          style={{ color: "var(--on-surface-variant, #c6c5d5)" }}
+        >
           Credits
         </span>
       </div>
@@ -121,45 +128,65 @@ export default function AnalysisCreditsBadge({
             top: "calc(100% + 8px)",
             right: 0,
             zIndex: 9999,
-            width: 255,
+            width: 240,
+            borderRadius: 14,
+            padding: "12px 14px",
+            background: "var(--surface-container-high, #201f1f)",
+            border: "1px solid var(--outline-variant, #464653)",
+            boxShadow: "0 14px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08)",
+            backdropFilter: "blur(16px)",
           }}
-          className="rounded-2xl p-3.5 bg-surface-container-lowest dark:bg-[#1e1e24] border border-outline-variant shadow-xl dark:shadow-[0_16px_40px_rgba(0,0,0,0.7)] backdrop-blur-xl"
         >
-          {/* Header Row */}
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/40 dark:border-white/10">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+            <span
+              className="text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: "var(--on-surface-variant, #908f9f)" }}
+            >
               Analysis Quota
             </span>
             <span
-              className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${
-                isExhausted
-                  ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30"
-                  : "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30"
-              }`}
+              className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
+              style={{
+                background: isExhausted
+                  ? "rgba(244, 63, 94, 0.15)"
+                  : "rgba(245, 158, 11, 0.15)",
+                color: isExhausted ? "#fb7185" : "#fbbf24",
+                border: `1px solid ${isExhausted ? "rgba(244, 63, 94, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
+              }}
             >
-              <Zap size={10} className="fill-current" />
+              <Zap size={10} fill="currentColor" />
               {remaining} of {total} left
             </span>
           </div>
 
-          {/* Usage description */}
-          <p className="text-[11.5px] text-on-surface leading-relaxed m-0">
+          <p
+            className="text-[11px] leading-relaxed m-0"
+            style={{ color: "var(--on-surface, #e5e2e1)" }}
+          >
             {used === 0
               ? "Each analyzed repo consumes 1 credit (5/hr limit)."
               : `Used ${used} credit${used > 1 ? "s" : ""} for ${used} analyzed repo${used > 1 ? "s" : ""}.`}
           </p>
 
-          {/* Unlimited Free Chat Announcement Box */}
-          <div className="my-2.5 p-2.5 rounded-xl flex items-center gap-2 text-[11.5px] bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25">
-            <Lightbulb size={14} className="shrink-0 text-amber-600 dark:text-amber-300 fill-amber-500/20" />
-            <span className="leading-snug">
-              Once analyzed, Q&A chat is <strong className="font-semibold text-emerald-900 dark:text-emerald-200">100% free & unlimited</strong>.
+          <div
+            className="my-2.5 p-2 rounded-xl flex items-center gap-2 text-[11px]"
+            style={{
+              background: "color-mix(in srgb, #10b981 12%, transparent)",
+              border: "1px solid color-mix(in srgb, #10b981 25%, transparent)",
+              color: "#34d399",
+            }}
+          >
+            <Lightbulb size={13} className="shrink-0 text-amber-300 fill-amber-300/30" />
+            <span className="leading-tight">
+              Once analyzed, Q&A chat is <strong>100% free & unlimited</strong>.
             </span>
           </div>
 
-          {/* Window footnote */}
-          <div className="pt-1.5 border-t border-outline-variant/30 dark:border-white/5 flex items-center gap-1.5 text-[10px] text-on-surface-variant opacity-75">
-            <Clock size={11} className="shrink-0" />
+          <div
+            className="mt-2.5 pt-2 border-t border-white/5 flex items-center gap-1.5 text-[10px]"
+            style={{ color: "var(--on-surface-variant, #908f9f)" }}
+          >
+            <Clock size={11} className="shrink-0 opacity-80" />
             <span>5 analysis credits / hour sliding window</span>
           </div>
         </div>
