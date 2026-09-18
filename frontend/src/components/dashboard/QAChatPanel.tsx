@@ -18,7 +18,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowUp, Bot, FileCode, Zap, AlertCircle, Square,
   ChevronRight, Copy, Check, RefreshCw, ChevronDown, ChevronUp,
-  History, Plus, Trash2, Search, Clock, ShieldAlert, CheckCircle2, Flame
+  History, Plus, Trash2, Search, Clock, ShieldAlert, CheckCircle2, Flame, Sparkles
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -1163,13 +1163,6 @@ export default function QAChatPanel({
   const sendMessage = useCallback(
     async (query: string) => {
       if (!query.trim() || isLoading) return;
-      if (rateLimitCooldown > 0) {
-        sileo.warning({
-          title: "Rate Limit Active",
-          description: `Please wait ${rateLimitCooldown}s before sending another query.`,
-        });
-        return;
-      }
 
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -1395,7 +1388,6 @@ export default function QAChatPanel({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (rateLimitCooldown > 0) return;
       sendMessage(input);
     }
   };
@@ -1472,7 +1464,21 @@ export default function QAChatPanel({
         }}
       >
         {/* ── Top Header ────────────────────────────────────────────── */}
-        <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 12px 0", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px 0" }}>
+          {/* Unlimited Free Access Badge */}
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-semibold"
+            style={{
+              background: "color-mix(in srgb, #10b981 12%, transparent)",
+              border: "1px solid color-mix(in srgb, #10b981 25%, transparent)",
+              color: "#34d399",
+            }}
+          >
+            <Sparkles size={11} className="text-emerald-400" />
+            <span>Unlimited Free Chat</span>
+          </div>
+
+          <div style={{ display: "flex", gap: 12 }}>
           <button
             onClick={startNewSession}
             title="New Chat"
@@ -1518,6 +1524,7 @@ export default function QAChatPanel({
             <History size={16} />
           </button>
         </div>
+      </div>
 
         {/* ── Loading history on mount ─────────────────────────── */}
         {isLoadingHistory && !hasMessages && (
@@ -1623,10 +1630,8 @@ export default function QAChatPanel({
                 <button
                   key={s}
                   type="button"
-                  disabled={rateLimitCooldown > 0}
                   onClick={(e) => {
                     e.preventDefault();
-                    if (rateLimitCooldown > 0) return;
                     sendMessage(s);
                   }}
                   style={{
@@ -1638,8 +1643,7 @@ export default function QAChatPanel({
                     borderRadius: 9,
                     color: "var(--on-surface-variant)",
                     fontSize: 11.5,
-                    cursor: rateLimitCooldown > 0 ? "not-allowed" : "pointer",
-                    opacity: rateLimitCooldown > 0 ? 0.4 : 1,
+                    cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: 7,

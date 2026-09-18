@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Zap, Clock } from "lucide-react";
+import { Zap, Clock, Sparkles } from "lucide-react";
 
 export function computeAnalysisCredits(repos: Array<{ analysis_status: string }>): {
   total: number;
@@ -164,16 +164,30 @@ export default function AnalysisCreditsBadge({
             style={{ color: "var(--on-surface, #e5e2e1)" }}
           >
             {used === 0
-              ? "Each successfully analyzed repo consumes 1 credit."
+              ? "Each analyzed repo consumes 1 credit (5/hr limit)."
               : `Used ${used} credit${used > 1 ? "s" : ""} for ${used} analyzed repo${used > 1 ? "s" : ""}.`}
           </p>
+
+          <div
+            className="my-2.5 p-2 rounded-xl flex items-center gap-2 text-[11px]"
+            style={{
+              background: "color-mix(in srgb, #10b981 12%, transparent)",
+              border: "1px solid color-mix(in srgb, #10b981 25%, transparent)",
+              color: "#34d399",
+            }}
+          >
+            <Sparkles size={12} className="shrink-0 text-emerald-400" />
+            <span className="leading-tight">
+              Once analyzed, Q&A chat is <strong>100% free & unlimited</strong>.
+            </span>
+          </div>
 
           <div
             className="mt-2.5 pt-2 border-t border-white/5 flex items-center gap-1.5 text-[10px]"
             style={{ color: "var(--on-surface-variant, #908f9f)" }}
           >
             <Clock size={11} className="shrink-0 opacity-80" />
-            <span>Quota refreshes hourly (sliding window)</span>
+            <span>5 analysis credits / hour sliding window</span>
           </div>
         </div>
       )}

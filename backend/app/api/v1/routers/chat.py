@@ -97,16 +97,6 @@ async def chat_stream(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    client_host = request.client.host if request.client else "unknown"
-    rl_key = f"{client_host}:{payload.session_id or 'new'}"
-    allowed, retry_after = chat_limiter.check(rl_key)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit exceeded. Try again in {retry_after:.1f}s.",
-            headers={"Retry-After": str(int(retry_after) + 1)},
-        )
-
     session = await chat_service.get_or_create_session(
         db, payload.session_id, payload.repo_id, current_user.id
     )
