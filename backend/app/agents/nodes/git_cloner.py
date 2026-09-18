@@ -86,15 +86,25 @@ def git_cloner_node(state: Dict[str, Any]) -> Dict[str, Any]:
     os.makedirs(CLONE_BASE_DIR, exist_ok=True)
 
     try:
-        # Shallow clone (depth=1) — downloads all file blobs so the AST parser
-        # and embedder have actual content to work with.
-        # NOTE: filter="blob:none" was previously used for speed but it omits
-        # file content, causing "No parsed files to embed" in the pipeline.
+        # High-speed shallow clone:
+        # - depth=1: Only latest commit
+        # - single_branch=True: Only HEAD branch
+        # - --no-tags: Avoids downloading thousands of release tags and historical refs (massive speedup)
+        # - --shallow-submodules: Prevents recursive full-history submodules
+        # - GIT_TERMINAL_PROMPT=0: Prevents hanging on prompts
         Repo.clone_from(
             repo_url,
             clone_path,
             depth=1,
             single_branch=True,
+            multi_options=[
+                "--no-tags",
+                "--shallow-submodules",
+            ],
+            env={
+                "GIT_TERMINAL_PROMPT": "0",
+                "GIT_HTTP_MAX_REQUEST_BUFFER": "100M",
+            },
         )
 
         return {

@@ -102,34 +102,7 @@ chat_message_limiter = RateLimiter(
 
 async def validate_repo_size_limit(github_url: str):
     """
-    Query GitHub API repository metadata before cloning.
-    Rejects repositories that exceed MAX_REPO_SIZE_MB to protect server disk & memory.
+    Repository size restriction removed per user requirement.
+    Returns immediately with zero network latency.
     """
-    parts = github_url.rstrip("/").split("/")
-    if len(parts) < 2:
-        return
-
-    owner, repo_name = parts[-2], parts[-1]
-    api_url = f"https://api.github.com/repos/{owner}/{repo_name}"
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(api_url, headers={"User-Agent": "RepoHawk-Validator"})
-            if resp.status_code == 200:
-                data = resp.json()
-                size_kb = data.get("size", 0)
-                size_mb = size_kb / 1024.0
-
-                if size_mb > settings.MAX_REPO_SIZE_MB:
-                    logger.warning(f"Rejected repo {owner}/{repo_name}: size {size_mb:.1f} MB exceeds {settings.MAX_REPO_SIZE_MB} MB limit.")
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=(
-                            f"Repository is too large ({size_mb:.1f} MB). "
-                            f"Free tier limit is {settings.MAX_REPO_SIZE_MB} MB."
-                        ),
-                    )
-    except HTTPException:
-        raise
-    except Exception as err:
-        logger.debug(f"Pre-clone size check skipped (non-blocking): {err}")
+    return

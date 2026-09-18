@@ -77,6 +77,15 @@ async def run_repo_analysis(repo_id: uuid.UUID, db_factory):
                 return
 
             repo.analysis_status = "running"
+            init_event = {
+                "step": "git_cloner",
+                "log": f"🚀 Initializing high-speed clone for {repo.owner or ''}/{repo.name}...",
+                "status": "running",
+            }
+            progress_manager.publish(str(repo.id), init_event)
+            current_logs = list(repo.logs or [])
+            current_logs.append(init_event)
+            repo.logs = current_logs
             await _safe_commit(db)
 
             # 2. Invoke Analysis Graph

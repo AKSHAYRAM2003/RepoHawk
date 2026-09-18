@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     GITHUB_APP_CLIENT_SECRET: str = ""
 
     # Production Infrastructure
+    USE_CELERY: bool = False  # Disabled in local/dev to ensure zero-latency instant analysis dispatch
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
@@ -58,7 +59,6 @@ class Settings(BaseSettings):
     RATE_LIMIT_ANALYSIS_WINDOW_SECONDS: int = 14400
     RATE_LIMIT_ANALYSIS_PER_HOUR: int = 5  # kept for backwards compatibility
     RATE_LIMIT_CHAT_PER_MINUTE: int = 20
-    MAX_REPO_SIZE_MB: int = 150
     MAX_PARSE_FILES: int = 5000
     
     class Config:
