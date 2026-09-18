@@ -16,7 +16,9 @@ export async function POST(
     });
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Failed to retry analysis" }, { status: response.status });
+      const errJson = await response.json().catch(() => ({}));
+      const msg = errJson.detail || errJson.error || "Failed to retry analysis";
+      return NextResponse.json({ error: msg }, { status: response.status });
     }
 
     const data = await response.json();

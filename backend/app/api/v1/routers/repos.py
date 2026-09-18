@@ -255,8 +255,8 @@ async def retry_repo_analysis(
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
         
-    if repo.analysis_status in ["queued", "running"]:
-        raise HTTPException(status_code=400, detail="Analysis is already running")
+    # Cancel any active running task for this repo first
+    task_manager.cancel_task(str(repo_id))
 
     # ── Pre-retry cleanup: remove stale artifacts so the pipeline starts clean ──
     # 1. Remove previous git clone (if still present)

@@ -13,14 +13,14 @@ class Settings(BaseSettings):
     # Per-agent model selection (swap via .env without code changes)
     # NOTE: gpt-oss-20b:free is broken (returns None content). Using nemotron-3-nano-30b-a3b:free
     #       which is fast (~2s) and reliably returns grounded code answers.
-    MODEL_CHAT: str = "nvidia/nemotron-3-nano-30b-a3b:free"
-    MODEL_DIAGRAM: str = "openai/gpt-oss-120b:free"
-    MODEL_CRITIQUE: str = "openai/gpt-oss-120b:free"
+    MODEL_CHAT: str = "cohere/north-mini-code:free"
+    MODEL_DIAGRAM: str = "cohere/north-mini-code:free"
+    MODEL_CRITIQUE: str = "cohere/north-mini-code:free"
     # NOTE: Embeddings are computed LOCALLY via sentence-transformers
     # (all-MiniLM-L6-v2, 384-dim) — see app/core/embeddings.py. There is no
     # remote embedding model, so no MODEL_EMBED setting is needed here.
-    MODEL_FALLBACK: str = "nvidia/nemotron-3-nano-30b-a3b:free"
-    MODEL_REWRITE: str = "nvidia/nemotron-3-nano-30b-a3b:free"
+    MODEL_FALLBACK: str = "nex-agi/nex-n2.5-mini:free"
+    MODEL_REWRITE: str = "cohere/north-mini-code:free"
     
     # Chroma runs embedded/on-disk via a PersistentClient (see
     # app/core/vector_store.py) — there is no separate Chroma server, so no

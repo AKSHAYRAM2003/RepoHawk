@@ -111,6 +111,10 @@ def _invoke_with_retry(llm: ChatOpenAI, prompt_or_messages, input_data: dict = N
                 else:
                     logger.warning(f"JSON parse retries exhausted. Trying fallback model...")
             else:
+                err_text = str(e).lower()
+                if any(x in err_text for x in ["404", "not found", "unavailable", "deprecated"]):
+                    logger.warning(f"Model unavailable ({e!s:.120}) — switching to fallback model {settings.MODEL_FALLBACK}...")
+                    break
                 # Non-transient error (auth, malformed request, etc.) — don't retry
                 logger.error(f"Non-retryable LLM error: {e!s:.120}")
                 raise

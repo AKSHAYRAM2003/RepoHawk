@@ -157,7 +157,8 @@ export function useRepoAnalysis(repoId: string) {
         method: "POST"
       });
       if (!res.ok) {
-        throw new Error("Failed to retry analysis");
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.detail || "Failed to retry analysis");
       }
       await fetchRepoDetails();
     } catch (err: any) {
