@@ -8,16 +8,12 @@ import {
   FileArchive,
   CheckCircle2,
   Clock,
-  Lightbulb,
-  FolderGit2,
-  ArrowRight,
-  RefreshCw,
-  Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "../ThemeProvider";
 import { useAuth } from "@/contexts/AuthContext";
-import { computeAnalysisCredits, CreditInfo } from "@/components/dashboard/AnalysisCreditsBadge";
+import { useCredits } from "@/hooks/useCredits";
+import CreditStatusPanel from "@/components/dashboard/CreditStatusPanel";
 
 interface AnalyzeModalProps {
   isOpen?: boolean;
@@ -33,17 +29,19 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
   const [animState, setAnimState] = useState<"closed" | "opening" | "open" | "closing">("closed");
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [credits, setCredits] = useState<CreditInfo | null>(null);
+  const [showInputFormOverride, setShowInputFormOverride] = useState(false);
+  // Server-set 429 error (when backend returns 429 on form submit)
   const [rateLimitError, setRateLimitError] = useState<{
     retryAfterSeconds: number;
     message: string;
   } | null>(null);
-  const [showInputFormOverride, setShowInputFormOverride] = useState(false);
-  const [, setTick] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { user } = useAuth();
+
+  // Server-authoritative credit status
+  const credits = useCredits();
 
   // Theme tokens
   const { resolvedTheme } = useTheme();
@@ -51,33 +49,11 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
 
   useEffect(() => setMounted(true), []);
 
-  // Fetch repos and evaluate credits
-  const fetchQuota = useCallback(() => {
-    fetch("/api/repos", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        if (Array.isArray(data)) {
-          const computed = computeAnalysisCredits(data, 4);
-          setCredits(computed);
-          if (computed.remaining > 0) {
-            setRateLimitError(null);
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
-
+  // Re-fetch credits when modal opens
   useEffect(() => {
-    fetchQuota();
-  }, [fetchQuota, isOpen]);
-
-  // Live timer tick for countdown
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (isOpen) credits.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   useEffect(() => {
     if (inline) {
@@ -133,11 +109,12 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
     const file = e.target.files?.[0]; if (file) handleFile(file);
   };
 
-  // Determine limit status
-  const isLimitReached = (credits !== null && credits.remaining === 0) || rateLimitError !== null;
+  // Determine limit status — server credit check + any 429 thrown at submit time
+  const isLimitReached = credits.isExhausted || rateLimitError !== null;
 
-  let resetTimeStr = credits?.formattedResetTime || "";
-  let countdownStr = credits?.formattedCountdown || "";
+  let resetTimeStr = credits.formattedResetTime;
+  let countdownStr = credits.formattedCountdown;
+  let retryAfterSecs = credits.retryAfterSeconds;
 
   if (rateLimitError) {
     const resetDate = new Date(Date.now() + rateLimitError.retryAfterSeconds * 1000);
@@ -145,7 +122,8 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
     const h = Math.floor(rateLimitError.retryAfterSeconds / 3600);
     const m = Math.floor((rateLimitError.retryAfterSeconds % 3600) / 60);
     const s = rateLimitError.retryAfterSeconds % 60;
-    countdownStr = h > 0 ? `${h}h ${m}m` : (m > 0 ? `${m}m ${s}s` : `${s}s`);
+    countdownStr = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+    retryAfterSecs = rateLimitError.retryAfterSeconds;
   }
 
   const handleAnalyze = async (e: React.FormEvent) => {
@@ -174,6 +152,8 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
               message: errData.error || errData.detail || "Analysis credit limit reached for this window.",
             });
             setShowInputFormOverride(false);
+            // Sync the hook state
+            credits.refresh();
             return;
           }
           throw new Error(errData.detail || errData.error || `Error ${res.status}: Failed to start analysis`);
@@ -191,7 +171,11 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
     }
   };
 
-  const canSubmit = ((activeTab === "url" && repoUrl.length > 0) || (activeTab === "upload" && uploadedFile !== null)) && !isLoading && !isLimitReached;
+  const canSubmit =
+    ((activeTab === "url" && repoUrl.length > 0) ||
+      (activeTab === "upload" && uploadedFile !== null)) &&
+    !isLoading &&
+    !isLimitReached;
   const formatFileSize = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
   if (animState === "closed" || !mounted) return null;
@@ -246,10 +230,10 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
   };
 
   // ─────────────────────────────────────────────────────────────
-  // Claude / ChatGPT-style Limit Exceeded Guidance Screen
+  // Credit Limit Gate — Claude / ChatGPT-style Guidance Screen
   // ─────────────────────────────────────────────────────────────
   if (isLimitReached && !showInputFormOverride) {
-    const limitGuidanceContent = (
+    const limitContent = (
       <div style={cardStyles} className="p-6 sm:p-8">
         {/* Close button */}
         {(!inline || onClose) && (
@@ -264,189 +248,55 @@ export default function AnalyzeModal({ isOpen = true, onClose, inline = false }:
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "background 150ms",
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = t.closeBtnHov)}
-            onMouseLeave={e => (e.currentTarget.style.background = t.closeBtn)}
+            onMouseEnter={(e) => (e.currentTarget.style.background = t.closeBtnHov)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = t.closeBtn)}
             aria-label="Close"
           >
             <X size={20} />
           </button>
         )}
 
-        <div className="flex flex-col gap-5 sm:gap-6">
-          {/* Top Quota Pill */}
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
-              style={{
-                background: isDark ? "rgba(244, 63, 94, 0.15)" : "rgba(244, 63, 94, 0.1)",
-                border: "1px solid rgba(244, 63, 94, 0.3)",
-                color: isDark ? "#fb7185" : "#e11d48",
-              }}
-            >
-              <Clock size={12} />
-              Quota Limit Reached · 0 of 5 Credits Left
-            </span>
-          </div>
-
-          {/* Header */}
-          <div className="pr-8">
-            <h2 className="m-0 text-2xl sm:text-[28px] font-extrabold tracking-tight" style={{ color: t.title }}>
-              Analysis Limit Reached
-            </h2>
-            <p className="mt-1.5 text-sm leading-relaxed m-0" style={{ color: t.subtitle }}>
-              You have analyzed 5 repositories in this 4-hour window. New analysis credits refresh automatically once earlier analyses age out.
-            </p>
-          </div>
-
-          {/* Claude / ChatGPT Signature Comeback Guidance Box */}
-          <div
-            className="p-4 sm:p-5 rounded-2xl border flex flex-col gap-3"
-            style={{
-              background: isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.02)",
-              borderColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
-            }}
-          >
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                  style={{
-                    background: isDark ? "rgba(251, 191, 36, 0.15)" : "rgba(251, 191, 36, 0.12)",
-                    border: "1px solid rgba(251, 191, 36, 0.25)",
-                  }}
-                >
-                  <Clock size={20} className="text-amber-500 animate-pulse" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider m-0" style={{ color: t.subtitle }}>
-                    Next Credit Available At
-                  </p>
-                  <p className="text-lg sm:text-xl font-extrabold m-0 tracking-tight" style={{ color: t.title }}>
-                    {resetTimeStr || "Within 3–4 hours"}
-                  </p>
-                </div>
-              </div>
-
-              {countdownStr && (
-                <div
-                  className="px-3 py-1.5 rounded-full text-xs font-mono font-bold flex items-center gap-1.5 shrink-0"
-                  style={{
-                    background: isDark ? "rgba(251, 191, 36, 0.12)" : "rgba(251, 191, 36, 0.1)",
-                    border: "1px solid rgba(251, 191, 36, 0.3)",
-                    color: isDark ? "#fbbf24" : "#b45309",
-                  }}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                  ~{countdownStr} remaining
-                </div>
-              )}
-            </div>
-
-            <div
-              className="pt-2.5 border-t text-[11px] leading-relaxed"
-              style={{
-                borderColor: isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.06)",
-                color: t.subtitle,
-              }}
-            >
-              Quota resets in a rolling 4-hour window (5 repositories max). No action needed—your quota refreshes in the background.
-            </div>
-          </div>
-
-          {/* Reassurance Banner: Free Unlimited Q&A Chat */}
-          <div
-            className="p-4 rounded-2xl flex items-start gap-3 text-xs leading-relaxed"
-            style={{
-              background: "color-mix(in srgb, #10b981 10%, transparent)",
-              border: "1px solid color-mix(in srgb, #10b981 35%, transparent)",
-              color: isDark ? "#a7f3d0" : "#065f46",
-            }}
-          >
-            <Lightbulb size={18} className="shrink-0 text-amber-500 fill-amber-300/30 mt-0.5" />
-            <div>
-              <strong className="block text-sm font-bold text-emerald-600 dark:text-emerald-400 mb-0.5">
-                Once analyzed, Q&A chat is 100% free & unlimited!
-              </strong>
-              <span>
-                You do not need credits to ask questions, explore architecture maps, or inspect dependencies on any of your existing indexed repositories.
-              </span>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                if (onClose) onClose();
-                router.push(`/dashboard/${user?.id || ""}`);
-              }}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                gap: 8, width: "100%", height: 52, borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.2)",
-                fontSize: 15, fontWeight: 700, cursor: "pointer",
-                color: "white",
-                background: "linear-gradient(to bottom, #4a50c5, #00b08a)",
-                boxShadow: "0 8px 24px rgba(74,80,197,0.3), inset 0 2px 1px rgba(255,255,255,0.4), inset 0 -2px 2px rgba(0,0,0,0.2)",
-                transition: "all 200ms ease",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-2px)")}
-              onMouseLeave={e => (e.currentTarget.style.transform = "translateY(0)")}
-            >
-              <FolderGit2 size={18} />
-              <span>Browse My Repositories</span>
-              <ArrowRight size={16} />
-            </button>
-
-            <div className="flex items-center justify-between text-xs px-2" style={{ color: t.subtitle }}>
-              <button
-                type="button"
-                onClick={fetchQuota}
-                className="hover:underline flex items-center gap-1.5 cursor-pointer bg-transparent border-0 p-0 text-inherit font-medium"
-              >
-                <RefreshCw size={12} />
-                <span>Check if credit unlocked</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowInputFormOverride(true)}
-                className="hover:underline cursor-pointer bg-transparent border-0 p-0 text-inherit font-medium opacity-70 hover:opacity-100"
-              >
-                Enter URL anyway
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreditStatusPanel
+          used={credits.used}
+          total={credits.total}
+          remaining={credits.remaining}
+          formattedResetTime={resetTimeStr}
+          formattedCountdown={countdownStr}
+          retryAfterSeconds={retryAfterSecs}
+          onRefresh={credits.refresh}
+          onEnterAnyway={() => setShowInputFormOverride(true)}
+        />
       </div>
     );
 
     if (inline) {
       return (
         <div className="w-full flex items-center justify-center p-4">
-          {limitGuidanceContent}
+          {limitContent}
         </div>
       );
     }
 
-    return mounted ? createPortal(
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        <div
-          onClick={onClose}
-          style={{
-            position: "absolute", inset: 0,
-            backgroundColor: t.backdrop,
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-            opacity: isVisible ? 1 : 0,
-            transition: "opacity 300ms ease-out",
-          }}
-        />
-        {limitGuidanceContent}
-      </div>,
-      document.body
-    ) : null;
+    return mounted
+      ? createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div
+              onClick={onClose}
+              style={{
+                position: "absolute",
+                inset: 0,
+                backgroundColor: t.backdrop,
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                opacity: isVisible ? 1 : 0,
+                transition: "opacity 300ms ease-out",
+              }}
+            />
+            {limitContent}
+          </div>,
+          document.body
+        )
+      : null;
   }
 
   // ─────────────────────────────────────────────────────────────

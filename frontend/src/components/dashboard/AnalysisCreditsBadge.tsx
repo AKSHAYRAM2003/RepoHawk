@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Zap, Clock, Lightbulb } from "lucide-react";
+import { useCredits } from "@/hooks/useCredits";
 
 export interface CreditInfo {
   total: number;
@@ -13,6 +14,11 @@ export interface CreditInfo {
   formattedCountdown: string;
 }
 
+/**
+ * Legacy helper — kept for backwards compatibility with AnalyzeModal
+ * which computes credits client-side from the repo list.
+ * Prefer using useCredits() hook for server-authoritative values.
+ */
 export function computeAnalysisCredits(
   repos: Array<{ analysis_status: string; created_at?: string | null }>,
   windowHours: number = 4
@@ -21,7 +27,6 @@ export function computeAnalysisCredits(
   const WINDOW_MS = windowHours * 60 * 60 * 1000;
   const now = Date.now();
 
-  // Active repos in current 4-hour sliding window (failed repos don't consume quota)
   const windowRepos = repos
     .filter((r) => {
       if (r.analysis_status === "failed") return false;
@@ -80,6 +85,10 @@ export function computeAnalysisCredits(
 }
 
 interface AnalysisCreditsBadgeProps {
+  /**
+   * Optional repo list — when provided we use computeAnalysisCredits (legacy).
+   * When omitted the badge queries the server-authoritative /api/credits endpoint.
+   */
   repos?: Array<{ analysis_status: string; created_at?: string | null }>;
   className?: string;
 }
@@ -88,46 +97,36 @@ export default function AnalysisCreditsBadge({
   repos: propRepos,
   className = "",
 }: AnalysisCreditsBadgeProps) {
-  const [internalRepos, setInternalRepos] = useState<Array<{ analysis_status: string; created_at?: string | null }>>([]);
-  const [loading, setLoading] = useState(!propRepos);
   const [showTooltip, setShowTooltip] = useState(false);
-  const [, setTick] = useState(0);
 
-  useEffect(() => {
-    if (propRepos) {
-      setInternalRepos(propRepos);
-      setLoading(false);
-      return;
-    }
+  // Always use the server-authoritative hook for the real count
+  const serverCredits = useCredits();
 
-    let cancelled = false;
-    fetch("/api/repos", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        if (!cancelled && Array.isArray(data)) {
-          setInternalRepos(data);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+  // If a repo list is passed in, use client-side calc (legacy compat) —
+  // but still show server credits in the tooltip for accuracy.
+  let total: number;
+  let remaining: number;
+  let used: number;
+  let formattedResetTime: string;
+  let formattedCountdown: string;
+  let isLoading: boolean;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [propRepos]);
-
-  // Live timer tick for accurate comeback countdown
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const activeRepos = propRepos ?? internalRepos;
-  const { total, used, remaining, formattedResetTime, formattedCountdown } = computeAnalysisCredits(activeRepos, 4);
+  if (propRepos) {
+    const computed = computeAnalysisCredits(propRepos, 4);
+    total = computed.total;
+    remaining = computed.remaining;
+    used = computed.used;
+    formattedResetTime = computed.formattedResetTime;
+    formattedCountdown = computed.formattedCountdown;
+    isLoading = false;
+  } else {
+    total = serverCredits.total;
+    remaining = serverCredits.remaining;
+    used = serverCredits.used;
+    formattedResetTime = serverCredits.formattedResetTime;
+    formattedCountdown = serverCredits.formattedCountdown;
+    isLoading = serverCredits.isLoading;
+  }
 
   const isExhausted = remaining === 0;
   const isLow = remaining <= 2 && remaining > 0;
@@ -175,7 +174,7 @@ export default function AnalysisCreditsBadge({
                 : "var(--on-surface, #ffffff)",
             }}
           >
-            {loading ? "—" : remaining}
+            {isLoading ? "—" : remaining}
           </span>
           <span
             className="font-mono text-[10px] font-medium"
@@ -201,12 +200,13 @@ export default function AnalysisCreditsBadge({
             top: "calc(100% + 8px)",
             right: 0,
             zIndex: 9999,
-            width: 250,
+            width: 268,
             borderRadius: 14,
             padding: "12px 14px",
             background: "var(--surface-container-high, #201f1f)",
             border: "1px solid var(--outline-variant, #464653)",
-            boxShadow: "0 14px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
+            boxShadow:
+              "0 14px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
             backdropFilter: "blur(16px)",
           }}
         >
@@ -224,12 +224,38 @@ export default function AnalysisCreditsBadge({
                   ? "rgba(244, 63, 94, 0.15)"
                   : "rgba(245, 158, 11, 0.15)",
                 color: isExhausted ? "#fb7185" : "#fbbf24",
-                border: `1px solid ${isExhausted ? "rgba(244, 63, 94, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
+                border: `1px solid ${
+                  isExhausted
+                    ? "rgba(244, 63, 94, 0.3)"
+                    : "rgba(245, 158, 11, 0.3)"
+                }`,
               }}
             >
               <Zap size={10} fill="currentColor" />
               {remaining} of {total} left
             </span>
+          </div>
+
+          {/* Credit pips */}
+          <div className="flex items-center gap-1 mb-3">
+            {Array.from({ length: total }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  flex: 1,
+                  height: 6,
+                  borderRadius: 999,
+                  background:
+                    i < used
+                      ? "linear-gradient(90deg, #f43f5e, #fb923c)"
+                      : "#10b981",
+                  opacity: i < used ? 0.9 : 0.85,
+                  boxShadow: i < used
+                    ? "0 0 4px rgba(244,63,94,0.4)"
+                    : "0 0 4px rgba(16,185,129,0.4)",
+                }}
+              />
+            ))}
           </div>
 
           <p
@@ -243,7 +269,7 @@ export default function AnalysisCreditsBadge({
 
           {isExhausted && (
             <div
-              className="my-2 p-2 rounded-xl text-[11px]"
+              className="my-2 p-2.5 rounded-xl text-[11px]"
               style={{
                 background: "color-mix(in srgb, #f43f5e 10%, transparent)",
                 border: "1px solid color-mix(in srgb, #f43f5e 30%, transparent)",
@@ -254,8 +280,10 @@ export default function AnalysisCreditsBadge({
                 <span>Limit reached</span>
               </div>
               <p className="mt-1 text-[11px] leading-tight m-0 text-rose-300/90">
-                Credits refresh at <strong>{formattedResetTime || "soon"}</strong>
-                {formattedCountdown ? ` (~${formattedCountdown} remaining)` : ""}.
+                Credits refresh at{" "}
+                <strong>{formattedResetTime || "soon"}</strong>
+                {formattedCountdown ? ` (~${formattedCountdown} remaining)` : ""}
+                .
               </p>
             </div>
           )}
@@ -268,9 +296,13 @@ export default function AnalysisCreditsBadge({
               color: "#34d399",
             }}
           >
-            <Lightbulb size={13} className="shrink-0 text-amber-500 fill-amber-300/30" />
+            <Lightbulb
+              size={13}
+              className="shrink-0 text-amber-500 fill-amber-300/30"
+            />
             <span className="leading-tight">
-              Once analyzed, Q&A chat is <strong>100% free & unlimited</strong>.
+              Once analyzed, Q&amp;A chat is{" "}
+              <strong>100% free &amp; unlimited</strong>.
             </span>
           </div>
 
