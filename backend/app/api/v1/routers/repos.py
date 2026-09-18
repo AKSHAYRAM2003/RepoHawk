@@ -48,13 +48,52 @@ class DiagramResponse(BaseModel):
 
 @router.post("/analyze", response_model=RepoResponse)
 async def analyze_repo(
+    request: Request,
     payload: AnalyzeRepoRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     from app.core.rate_limit import repo_analysis_limiter, validate_repo_size_limit
-    # Enforce repo size limits (reject repos > 150MB)
+    from app.core.config import settings
+    from datetime import timedelta
+
+    # 1. Enforce 4-hour window credit limit (5 credits total)
+    window_seconds = getattr(settings, "RATE_LIMIT_ANALYSIS_WINDOW_SECONDS", 14400)
+    limit = getattr(settings, "RATE_LIMIT_ANALYSIS_PER_WINDOW", 5)
+    window_start = datetime.utcnow() - timedelta(seconds=window_seconds)
+
+    # Check database records for repos analyzed by this user within current window
+    stmt = (
+        select(Repo.created_at)
+        .where(
+            Repo.user_id == current_user.id,
+            Repo.created_at >= window_start,
+            Repo.analysis_status != "failed",
+        )
+        .order_by(Repo.created_at.asc())
+    )
+    res = await db.execute(stmt)
+    recent_created_ats = res.scalars().all()
+
+    if len(recent_created_ats) >= limit:
+        oldest = recent_created_ats[0]
+        retry_after = max(1, int((oldest + timedelta(seconds=window_seconds) - datetime.utcnow()).total_seconds()))
+        logger.warning(
+            f"User {current_user.id} reached analysis credit limit ({len(recent_created_ats)}/{limit} in {window_seconds // 3600}h). "
+            f"Retry-After: {retry_after}s"
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=f"Analysis credit limit reached. You can analyze up to {limit} repositories per {window_seconds // 3600}-hour window.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    # Check Redis rate limiter
+    request.state.user_id = str(current_user.id)
+    await repo_analysis_limiter(request)
+
+    # 2. Enforce repo size limits (reject repos > 150MB)
     await validate_repo_size_limit(payload.github_url)
 
     parts = payload.github_url.rstrip("/").split("/")

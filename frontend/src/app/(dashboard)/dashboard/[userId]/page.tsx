@@ -148,7 +148,8 @@ export default function DashboardPage() {
     return null;
   }
 
-  const { remaining: creditsRemaining } = computeAnalysisCredits(repos);
+  const creditInfo = computeAnalysisCredits(repos, 4);
+  const creditsRemaining = creditInfo.remaining;
 
   return (
     <div className="min-h-screen p-6 md:p-10 max-w-7xl mx-auto space-y-8">
@@ -206,24 +207,19 @@ export default function DashboardPage() {
             {githubConnected === true ? "Connected" : "Connect GitHub"}
           </a>
 
-          {/* New Repo button — throttles when out of credits */}
+          {/* New Repo button */}
           {creditsRemaining <= 0 ? (
-            <button
-              onClick={() => {
-                sileo.warning({
-                  title: "Analysis Quota Exceeded",
-                  description: "You have used all 5 credits. Your quota refreshes every hour.",
-                });
-              }}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-rose-300 border border-rose-500/30 cursor-not-allowed opacity-80"
+            <Link
+              href={`/new-repo/${user?.id || ""}`}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl text-rose-300 border border-rose-500/30 hover:bg-rose-500/10 transition-all cursor-pointer"
               style={{
                 background: "rgba(244, 63, 94, 0.12)",
               }}
-              title="Quota reached (5 repos max / hour)"
+              title={`Quota reached (0/5 credits). Resets at ${creditInfo.formattedResetTime || "soon"}`}
             >
-              <Plus size={13} />
-              <span>0 Credits Left</span>
-            </button>
+              <Clock size={13} />
+              <span>0 Credits Left {creditInfo.formattedCountdown ? `· in ${creditInfo.formattedCountdown}` : ""}</span>
+            </Link>
           ) : (
             <Link
               href={`/new-repo/${user?.id || ""}`}

@@ -52,8 +52,11 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     ENVIRONMENT: str = "development"
     
-    # Rate Limiting & Safety Guardrails
-    RATE_LIMIT_ANALYSIS_PER_HOUR: int = 5
+    # Rate Limiting & Safety Guardrails (4-hour sliding window, 5 credits)
+    RATE_LIMIT_ANALYSIS_PER_WINDOW: int = 5
+    RATE_LIMIT_ANALYSIS_WINDOW_HOURS: int = 4
+    RATE_LIMIT_ANALYSIS_WINDOW_SECONDS: int = 14400
+    RATE_LIMIT_ANALYSIS_PER_HOUR: int = 5  # kept for backwards compatibility
     RATE_LIMIT_CHAT_PER_MINUTE: int = 20
     MAX_REPO_SIZE_MB: int = 150
     MAX_PARSE_FILES: int = 5000

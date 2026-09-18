@@ -3,20 +3,84 @@
 import React, { useState, useEffect } from "react";
 import { Zap, Clock, Lightbulb } from "lucide-react";
 
-export function computeAnalysisCredits(repos: Array<{ analysis_status: string }>): {
+export interface CreditInfo {
   total: number;
   used: number;
   remaining: number;
-} {
+  resetSecondsRemaining: number;
+  nextRefreshDate: Date | null;
+  formattedResetTime: string;
+  formattedCountdown: string;
+}
+
+export function computeAnalysisCredits(
+  repos: Array<{ analysis_status: string; created_at?: string | null }>,
+  windowHours: number = 4
+): CreditInfo {
   const TOTAL_CREDITS = 5;
-  const completedCount = repos.filter((r) => r.analysis_status === "complete").length;
-  const used = Math.min(TOTAL_CREDITS, completedCount);
+  const WINDOW_MS = windowHours * 60 * 60 * 1000;
+  const now = Date.now();
+
+  // Active repos in current 4-hour sliding window (failed repos don't consume quota)
+  const windowRepos = repos
+    .filter((r) => {
+      if (r.analysis_status === "failed") return false;
+      if (!r.created_at) return true;
+      const createdTime = new Date(r.created_at).getTime();
+      return !isNaN(createdTime) && now - createdTime < WINDOW_MS;
+    })
+    .sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeA - timeB;
+    });
+
+  const used = Math.min(TOTAL_CREDITS, windowRepos.length);
   const remaining = Math.max(0, TOTAL_CREDITS - used);
-  return { total: TOTAL_CREDITS, used, remaining };
+
+  let resetSecondsRemaining = 0;
+  let nextRefreshDate: Date | null = null;
+
+  if (remaining === 0 && windowRepos.length > 0) {
+    const oldestTime = windowRepos[0].created_at
+      ? new Date(windowRepos[0].created_at).getTime()
+      : now - WINDOW_MS + 3600 * 1000;
+    const refreshTime = oldestTime + WINDOW_MS;
+    resetSecondsRemaining = Math.max(0, Math.ceil((refreshTime - now) / 1000));
+    nextRefreshDate = new Date(refreshTime);
+  }
+
+  const formattedResetTime = nextRefreshDate
+    ? nextRefreshDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : "";
+
+  let formattedCountdown = "";
+  if (resetSecondsRemaining > 0) {
+    const h = Math.floor(resetSecondsRemaining / 3600);
+    const m = Math.floor((resetSecondsRemaining % 3600) / 60);
+    const s = resetSecondsRemaining % 60;
+    if (h > 0) {
+      formattedCountdown = `${h}h ${m}m`;
+    } else if (m > 0) {
+      formattedCountdown = `${m}m ${s}s`;
+    } else {
+      formattedCountdown = `${s}s`;
+    }
+  }
+
+  return {
+    total: TOTAL_CREDITS,
+    used,
+    remaining,
+    resetSecondsRemaining,
+    nextRefreshDate,
+    formattedResetTime,
+    formattedCountdown,
+  };
 }
 
 interface AnalysisCreditsBadgeProps {
-  repos?: Array<{ analysis_status: string }>;
+  repos?: Array<{ analysis_status: string; created_at?: string | null }>;
   className?: string;
 }
 
@@ -24,9 +88,10 @@ export default function AnalysisCreditsBadge({
   repos: propRepos,
   className = "",
 }: AnalysisCreditsBadgeProps) {
-  const [internalRepos, setInternalRepos] = useState<Array<{ analysis_status: string }>>([]);
+  const [internalRepos, setInternalRepos] = useState<Array<{ analysis_status: string; created_at?: string | null }>>([]);
   const [loading, setLoading] = useState(!propRepos);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     if (propRepos) {
@@ -53,8 +118,16 @@ export default function AnalysisCreditsBadge({
     };
   }, [propRepos]);
 
+  // Live timer tick for accurate comeback countdown
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
   const activeRepos = propRepos ?? internalRepos;
-  const { total, used, remaining } = computeAnalysisCredits(activeRepos);
+  const { total, used, remaining, formattedResetTime, formattedCountdown } = computeAnalysisCredits(activeRepos, 4);
 
   const isExhausted = remaining === 0;
   const isLow = remaining <= 2 && remaining > 0;
@@ -128,12 +201,12 @@ export default function AnalysisCreditsBadge({
             top: "calc(100% + 8px)",
             right: 0,
             zIndex: 9999,
-            width: 240,
+            width: 250,
             borderRadius: 14,
             padding: "12px 14px",
             background: "var(--surface-container-high, #201f1f)",
             border: "1px solid var(--outline-variant, #464653)",
-            boxShadow: "0 14px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08)",
+            boxShadow: "0 14px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
             backdropFilter: "blur(16px)",
           }}
         >
@@ -164,19 +237,38 @@ export default function AnalysisCreditsBadge({
             style={{ color: "var(--on-surface, #e5e2e1)" }}
           >
             {used === 0
-              ? "Each analyzed repo consumes 1 credit (5/hr limit)."
+              ? "Each analyzed repo consumes 1 credit (5 per 4-hour window)."
               : `Used ${used} credit${used > 1 ? "s" : ""} for ${used} analyzed repo${used > 1 ? "s" : ""}.`}
           </p>
+
+          {isExhausted && (
+            <div
+              className="my-2 p-2 rounded-xl text-[11px]"
+              style={{
+                background: "color-mix(in srgb, #f43f5e 10%, transparent)",
+                border: "1px solid color-mix(in srgb, #f43f5e 30%, transparent)",
+              }}
+            >
+              <div className="flex items-center gap-1.5 font-semibold text-rose-400">
+                <Clock size={12} />
+                <span>Limit reached</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-tight m-0 text-rose-300/90">
+                Credits refresh at <strong>{formattedResetTime || "soon"}</strong>
+                {formattedCountdown ? ` (~${formattedCountdown} remaining)` : ""}.
+              </p>
+            </div>
+          )}
 
           <div
             className="my-2.5 p-2 rounded-xl flex items-center gap-2 text-[11px]"
             style={{
-              background: "color-mix(in srgb, #10b981 12%, transparent)",
-              border: "1px solid color-mix(in srgb, #10b981 25%, transparent)",
+              background: "color-mix(in srgb, #10b981 10%, transparent)",
+              border: "1px solid color-mix(in srgb, #10b981 35%, transparent)",
               color: "#34d399",
             }}
           >
-            <Lightbulb size={13} className="shrink-0 text-amber-300 fill-amber-300/30" />
+            <Lightbulb size={13} className="shrink-0 text-amber-500 fill-amber-300/30" />
             <span className="leading-tight">
               Once analyzed, Q&A chat is <strong>100% free & unlimited</strong>.
             </span>
@@ -187,7 +279,7 @@ export default function AnalysisCreditsBadge({
             style={{ color: "var(--on-surface-variant, #908f9f)" }}
           >
             <Clock size={11} className="shrink-0 opacity-80" />
-            <span>5 analysis credits / hour sliding window</span>
+            <span>5 analysis credits / 4-hour window</span>
           </div>
         </div>
       )}

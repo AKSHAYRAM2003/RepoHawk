@@ -47,25 +47,36 @@ class RateLimiter:
                 pipe.zremrangebyscore(key, 0, window_start)
                 # 2. Count remaining calls in window
                 pipe.zcard(key)
-                # 3. Add current timestamp
-                pipe.zadd(key, {str(now): now})
-                # 4. Set expiry slightly longer than window
-                pipe.expire(key, self.window_seconds + 5)
+                # 3. Retrieve oldest call score to accurately determine comeback time
+                pipe.zrange(key, 0, 0, withscores=True)
                 results = await pipe.execute()
 
             call_count = results[1]
+            oldest_entries = results[2]
 
             if call_count >= self.limit:
-                retry_after = int(self.window_seconds)
+                if oldest_entries:
+                    oldest_score = float(oldest_entries[0][1])
+                    retry_after = max(1, int(oldest_score + self.window_seconds - now))
+                else:
+                    retry_after = int(self.window_seconds)
+
                 logger.warning(
                     f"Rate limit exceeded for {identifier} on scope '{self.scope}' "
-                    f"({call_count}/{self.limit} reqs). Rejected with HTTP 429."
+                    f"({call_count}/{self.limit} reqs). Rejected with HTTP 429. Retry-After: {retry_after}s"
                 )
+                window_desc = f"{self.window_seconds // 3600} hours" if self.window_seconds >= 3600 else f"{self.window_seconds}s"
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded. Maximum {self.limit} requests per {self.window_seconds}s.",
+                    detail=f"Analysis credit limit reached. Maximum {self.limit} repositories per {window_desc}.",
                     headers={"Retry-After": str(retry_after)},
                 )
+
+            # Within limit: record this call
+            async with redis.pipeline(transaction=True) as pipe:
+                pipe.zadd(key, {str(now): now})
+                pipe.expire(key, self.window_seconds + 5)
+                await pipe.execute()
 
         except HTTPException:
             raise
@@ -75,10 +86,10 @@ class RateLimiter:
             return
 
 
-# Standard pre-configured limiters
+# Standard pre-configured limiters (4-hour window, 5 credits)
 repo_analysis_limiter = RateLimiter(
-    limit=settings.RATE_LIMIT_ANALYSIS_PER_HOUR,
-    window_seconds=3600,
+    limit=getattr(settings, "RATE_LIMIT_ANALYSIS_PER_WINDOW", 5),
+    window_seconds=getattr(settings, "RATE_LIMIT_ANALYSIS_WINDOW_SECONDS", 14400),
     scope="repo_analysis",
 )
 
