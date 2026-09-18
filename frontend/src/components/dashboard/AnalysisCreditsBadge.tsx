@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Zap, Clock, Sparkles } from "lucide-react";
+import { Zap, Clock, Lightbulb } from "lucide-react";
 
 export function computeAnalysisCredits(repos: Array<{ analysis_status: string }>): {
   total: number;
@@ -176,7 +176,7 @@ export default function AnalysisCreditsBadge({
               color: "#34d399",
             }}
           >
-            <Sparkles size={12} className="shrink-0 text-emerald-400" />
+            <Lightbulb size={13} className="shrink-0 text-amber-300 fill-amber-300/30" />
             <span className="leading-tight">
               Once analyzed, Q&A chat is <strong>100% free & unlimited</strong>.
             </span>
