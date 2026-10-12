@@ -14,6 +14,17 @@ export interface CreditInfo {
   formattedCountdown: string;
 }
 
+function parseUtcTime(dateStr?: string | null): number {
+  if (!dateStr) return 0;
+  const str = dateStr.trim();
+  // Ensure ISO timestamp without timezone offset is parsed as UTC
+  const normalized = str.endsWith("Z") || /[+-]\d{2}(:\d{2})?$/.test(str)
+    ? str
+    : str.replace(" ", "T") + "Z";
+  const parsed = new Date(normalized).getTime();
+  return isNaN(parsed) ? new Date(str).getTime() : parsed;
+}
+
 /**
  * Legacy helper — kept for backwards compatibility with AnalyzeModal
  * which computes credits client-side from the repo list.
@@ -31,12 +42,12 @@ export function computeAnalysisCredits(
     .filter((r) => {
       if (r.analysis_status === "failed") return false;
       if (!r.created_at) return true;
-      const createdTime = new Date(r.created_at).getTime();
+      const createdTime = parseUtcTime(r.created_at);
       return !isNaN(createdTime) && now - createdTime < WINDOW_MS;
     })
     .sort((a, b) => {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      const timeA = parseUtcTime(a.created_at);
+      const timeB = parseUtcTime(b.created_at);
       return timeA - timeB;
     });
 
@@ -48,7 +59,7 @@ export function computeAnalysisCredits(
 
   if (remaining === 0 && windowRepos.length > 0) {
     const oldestTime = windowRepos[0].created_at
-      ? new Date(windowRepos[0].created_at).getTime()
+      ? parseUtcTime(windowRepos[0].created_at)
       : now - WINDOW_MS + 3600 * 1000;
     const refreshTime = oldestTime + WINDOW_MS;
     resetSecondsRemaining = Math.max(0, Math.ceil((refreshTime - now) / 1000));
@@ -86,8 +97,7 @@ export function computeAnalysisCredits(
 
 interface AnalysisCreditsBadgeProps {
   /**
-   * Optional repo list — when provided we use computeAnalysisCredits (legacy).
-   * When omitted the badge queries the server-authoritative /api/credits endpoint.
+   * Optional repo list for optimistic initial display while server credits load.
    */
   repos?: Array<{ analysis_status: string; created_at?: string | null }>;
   className?: string;
@@ -102,16 +112,16 @@ export default function AnalysisCreditsBadge({
   // Always use the server-authoritative hook for the real count
   const serverCredits = useCredits();
 
-  // If a repo list is passed in, use client-side calc (legacy compat) —
-  // but still show server credits in the tooltip for accuracy.
-  let total: number;
-  let remaining: number;
-  let used: number;
-  let formattedResetTime: string;
-  let formattedCountdown: string;
-  let isLoading: boolean;
+  // Prefer server-authoritative credits from the API/database
+  let total = serverCredits.total;
+  let remaining = serverCredits.remaining;
+  let used = serverCredits.used;
+  let formattedResetTime = serverCredits.formattedResetTime;
+  let formattedCountdown = serverCredits.formattedCountdown;
+  let isLoading = serverCredits.isLoading;
 
-  if (propRepos) {
+  // Only fallback to client-side compute if serverCredits is still loading and repos are provided
+  if (serverCredits.isLoading && propRepos && propRepos.length > 0) {
     const computed = computeAnalysisCredits(propRepos, 4);
     total = computed.total;
     remaining = computed.remaining;
@@ -119,13 +129,6 @@ export default function AnalysisCreditsBadge({
     formattedResetTime = computed.formattedResetTime;
     formattedCountdown = computed.formattedCountdown;
     isLoading = false;
-  } else {
-    total = serverCredits.total;
-    remaining = serverCredits.remaining;
-    used = serverCredits.used;
-    formattedResetTime = serverCredits.formattedResetTime;
-    formattedCountdown = serverCredits.formattedCountdown;
-    isLoading = serverCredits.isLoading;
   }
 
   const isExhausted = remaining === 0;

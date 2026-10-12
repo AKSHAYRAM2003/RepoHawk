@@ -57,7 +57,7 @@ async def get_analysis_credits(
     retry_after_seconds: Optional[int] = None
     reset_at: Optional[str] = None
 
-    if remaining == 0 and recent_created_ats:
+    if recent_created_ats:
         oldest = recent_created_ats[0]
         refresh_time = oldest + timedelta(seconds=window_seconds)
         retry_after_seconds = max(1, int((refresh_time - datetime.utcnow()).total_seconds()))

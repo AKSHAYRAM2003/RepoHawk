@@ -169,7 +169,7 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-3 self-start md:self-auto flex-wrap">
           {/* Analysis Credits Badge (5 credits total, 1 used per analyzed repo) */}
-          <AnalysisCreditsBadge repos={repos} />
+          <AnalysisCreditsBadge />
 
           <button
             onClick={fetchRepos}
