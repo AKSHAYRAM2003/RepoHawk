@@ -61,11 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isSignedIn, clerkUser]);
 
   const login = async (_email: string, _password: string) => {
-    setLoginModalOpen(true);
+    router.push("/auth/login");
   };
 
   const signup = async (_name: string, _email: string, _password: string) => {
-    setSignupModalOpen(true);
+    router.push("/auth/signup");
   };
 
   const logout = async () => {
