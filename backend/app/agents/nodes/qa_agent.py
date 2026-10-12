@@ -59,6 +59,8 @@ def _build_system_prompt(valid_node_ids: List[str]) -> str:
     """
     Build the QA system prompt. `valid_node_ids` is the actual list of node IDs
     from the diagram — the LLM can only choose from this set.
+    NOTE: We ask for a plain JSON block at the end so models without tool-calling
+    support can still produce structured output via text.
     """
     node_list = ", ".join(f"`{nid}`" for nid in valid_node_ids) if valid_node_ids else "(none)"
     return f"""You are RepoHawk, an expert AI assistant specialized in codebase exploration and architecture analysis.
@@ -89,6 +91,13 @@ NEVER invent a node ID. NEVER use a node ID that is not in the list above.
 ## Code Reference:
 If your answer points to a specific function or class, set `code_ref` to {{"file": "<path>", "line_start": <int>, "line_end": <int>}}.
 Otherwise, leave it as null.
+
+## IMPORTANT — Output Format:
+First write your complete answer (markdown is fine). Then at the very end, append a JSON block EXACTLY like this:
+---METADATA---
+```json
+{{"highlight_node_id": "<node-id or empty string>", "code_ref": null}}
+```
 """
 
 
@@ -391,31 +400,41 @@ def qa_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
         messages.append(HumanMessage(content=question))
 
-        # ── 6. Invoke LLM (structured output) ─────────────────────────────────
+        # ── 6. Invoke LLM (plain text + metadata tail parsing) ────────────────
+        # We deliberately avoid with_structured_output() because many free-tier
+        # models on OpenRouter don't support tool-calling and return the error:
+        # "model output must contain either output text or tool calls".
+        # Instead we ask the model to append a ---METADATA--- JSON block in plain
+        # text (see system prompt) and parse it ourselves.
         llm = get_chat_llm()
+        answer_text = ""
+        raw_highlight = ""
+        code_ref = None
         try:
-            structured_llm = llm.with_structured_output(QAResponse)
-            response = structured_llm.invoke(messages)
-            if isinstance(response, dict):
-                answer_text = response.get("answer") or ""
-                raw_highlight = (response.get("highlight_node_id") or "").strip()
-                code_ref = response.get("code_ref") if isinstance(response.get("code_ref"), dict) else None
+            raw_response = invoke_with_fallback(llm, messages)
+            full_text = (getattr(raw_response, "content", "") or "").strip()
+            # Parse the ---METADATA--- tail if present
+            if "---METADATA---" in full_text:
+                parts = full_text.split("---METADATA---", 1)
+                answer_text = parts[0].strip()
+                meta_raw = parts[1].strip().strip("`").strip()
+                if meta_raw.startswith("json"):
+                    meta_raw = meta_raw[4:].strip()
+                try:
+                    import json as _json
+                    meta = _json.loads(meta_raw)
+                    raw_highlight = (meta.get("highlight_node_id") or "").strip()
+                    if isinstance(meta.get("code_ref"), dict):
+                        code_ref = meta["code_ref"]
+                except Exception:
+                    pass  # metadata parsing is best-effort
             else:
-                answer_text = getattr(response, "answer", "") or ""
-                raw_highlight = (getattr(response, "highlight_node_id", "") or "").strip()
-                code_ref = getattr(response, "code_ref", None)
-        except Exception as struct_err:
-            logger.warning(f"QA Agent: with_structured_output failed ({struct_err}), using plain invoke fallback")
-            try:
-                raw_response = invoke_with_fallback(llm, messages)
-                answer_text = (getattr(raw_response, "content", "") or "").strip()
-                raw_highlight = ""
-                code_ref = None
-            except Exception as fallback_err:
-                logger.error(f"QA Agent: Plain fallback invoke failed: {fallback_err}")
-                answer_text = ""
-                raw_highlight = ""
-                code_ref = None
+                answer_text = full_text
+        except Exception as invoke_err:
+            logger.error(f"QA Agent: Invoke failed: {invoke_err}")
+            answer_text = ""
+            raw_highlight = ""
+            code_ref = None
 
         # ── 7. Validate highlight node id (strict exact match) ───────────────
         validated_highlight = _validate_node_id(raw_highlight, valid_node_ids)

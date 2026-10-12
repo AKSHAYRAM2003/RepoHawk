@@ -151,11 +151,8 @@ def embedder_node(state: Dict[str, Any]) -> Dict[str, Any]:
                     f"Embedder: Batch {batch_num} failed ({batch_err}). "
                     f"Marking {len(batch_docs)} chunks as embed_failed=True."
                 )
-                # Use a deterministic "poisoned" vector that's distinct enough
-                # not to be confused with any real embedding. We use all 1.0s
-                # so cosine distance is exactly 1.0 — guaranteed to be far from
-                # any real query vector and well above the relevance threshold.
-                poisoned = [1.0] * EMBED_DIM
+                current_dim = getattr(embeddings_client, "dim", EMBED_DIM)
+                poisoned = [1.0] * current_dim
                 all_embeddings.extend([poisoned for _ in batch_docs])
                 for i in range(batch_start, batch_start + len(batch_docs)):
                     failed_chunk_indices.add(i)

@@ -103,12 +103,63 @@ REVIEWER FEEDBACK:
 {critique_feedback}
 """
 
+def _read_fallback_summary(cloned_path: str) -> str:
+    """
+    When no code files were parsed, build a summary from README and config
+    files so the architect can still produce a meaningful diagram.
+    """
+    import os
+    priority_names = [
+        "readme.md", "readme.txt", "readme.rst", "readme",
+        "package.json", "pyproject.toml", "requirements.txt",
+        "go.mod", "cargo.toml", "dockerfile", "docker-compose.yml",
+        "makefile", ".env.example",
+    ]
+    lines = []
+    if not cloned_path or not os.path.isdir(cloned_path):
+        return "No repository files available."
+
+    for root, dirs, files in os.walk(cloned_path):
+        # Skip hidden dirs and common noise
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("node_modules", "__pycache__", ".git")]
+        for fname in files:
+            if fname.lower() in priority_names:
+                fpath = os.path.join(root, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                        content = f.read(3000)  # First 3KB
+                    rel = os.path.relpath(fpath, cloned_path)
+                    lines.append(f"=== {rel} ===")
+                    lines.append(content.strip()[:1500])
+                    lines.append("")
+                except OSError:
+                    pass
+        if len(lines) > 200:
+            break
+
+    return "\n".join(lines[:200]) if lines else "Repository contents could not be read."
+
+
 def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
     repo_url = state.get("repo_url")
     parsed_files: List[ParsedFile] = state.get("parsed_files", [])
+    cloned_path = state.get("cloned_path", "")
 
     if not parsed_files:
-        return {"error": "No parsed files to architect", "current_step": "error"}
+        # Fallback: try to build a diagram from README / config files
+        fallback_summary = _read_fallback_summary(cloned_path)
+        if not fallback_summary or fallback_summary in ("No repository files available.", "Repository contents could not be read."):
+            return {"error": "No parseable files found in repository", "current_step": "error",
+                    "progress_log": ["❌ No source files found — unable to generate architecture diagram"]}
+        structure_summary = fallback_summary
+    else:
+        summary_lines = []
+        for pf in parsed_files:
+            summary_lines.append(f"File: {pf['path']} ({pf['language']})")
+            for chunk in pf["chunks"][:2]:
+                clean_chunk = chunk.split("\n")[0].strip()
+                summary_lines.append(f"  - {clean_chunk}")
+        structure_summary = "\n".join(summary_lines[:250])
 
     # On a retry (critique failed previously), feed the reviewer's feedback back
     # into the prompt so the regeneration actually addresses the problems.
@@ -118,15 +169,6 @@ def architect_node(state: Dict[str, Any]) -> Dict[str, Any]:
         critique_block = CRITIQUE_FEEDBACK_TEMPLATE.format(critique_feedback=critique_feedback)
     else:
         critique_block = ""
-
-    summary_lines = []
-    for pf in parsed_files:
-        summary_lines.append(f"File: {pf['path']} ({pf['language']})")
-        for chunk in pf["chunks"][:2]:
-            clean_chunk = chunk.split("\n")[0].strip()
-            summary_lines.append(f"  - {clean_chunk}")
-
-    structure_summary = "\n".join(summary_lines[:250])
 
     try:
         llm = get_diagram_llm()

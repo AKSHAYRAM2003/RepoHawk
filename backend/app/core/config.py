@@ -12,15 +12,34 @@ class Settings(BaseSettings):
     
     # Per-agent model selection (swap via .env without code changes)
     # NOTE: gpt-oss-20b:free is broken (returns None content). Using nemotron-3-nano-30b-a3b:free
-    #       which is fast (~2s) and reliably returns grounded code answers.
-    MODEL_CHAT: str = "cohere/north-mini-code:free"
-    MODEL_DIAGRAM: str = "cohere/north-mini-code:free"
-    MODEL_CRITIQUE: str = "cohere/north-mini-code:free"
-    # NOTE: Embeddings are computed LOCALLY via sentence-transformers
-    # (all-MiniLM-L6-v2, 384-dim) — see app/core/embeddings.py. There is no
-    # remote embedding model, so no MODEL_EMBED setting is needed here.
-    MODEL_FALLBACK: str = "nex-agi/nex-n2.5-mini:free"
-    MODEL_REWRITE: str = "cohere/north-mini-code:free"
+    MODEL_CHAT: str = "nex-agi/nex-n2.5-mini:free"
+    MODEL_DIAGRAM: str = "nex-agi/nex-n2.5-mini:free"
+    MODEL_CRITIQUE: str = "nex-agi/nex-n2.5-mini:free"
+    MODEL_EMBED: str = "nvidia/nemotron-3-embed-1b:free"
+    MODEL_FALLBACK: str = "deepseek/deepseek-v4-flash-0731:free"
+    MODEL_REWRITE: str = "nex-agi/nex-n2.5-mini:free"
+
+    # ── AWS Bedrock (optional — leave blank to keep using OpenRouter) ─────────
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-1"
+    # Set to a named AWS profile (e.g. "repohawk-dev") to use SSO / ~/.aws/credentials
+    AWS_PROFILE: str = ""
+
+    # Per-agent provider: "openrouter" | "bedrock"
+    # Leave all as "openrouter" to keep current behaviour; flip individual ones to "bedrock"
+    LLM_PROVIDER_CHAT: str = "openrouter"
+    LLM_PROVIDER_DIAGRAM: str = "openrouter"
+    LLM_PROVIDER_CRITIQUE: str = "openrouter"
+    LLM_PROVIDER_REWRITE: str = "openrouter"
+    LLM_PROVIDER_EMBED: str = "openrouter"  # switching embed requires full re-index!
+
+    # Bedrock model IDs (used only when provider = "bedrock")
+    BEDROCK_MODEL_CHAT: str = "amazon.nova-lite-v1:0"
+    BEDROCK_MODEL_DIAGRAM: str = "amazon.nova-pro-v1:0"
+    BEDROCK_MODEL_CRITIQUE: str = "amazon.nova-pro-v1:0"
+    BEDROCK_MODEL_REWRITE: str = "amazon.nova-lite-v1:0"
+    BEDROCK_MODEL_EMBED: str = "amazon.titan-embed-text-v2:0"
     
     # Chroma runs embedded/on-disk via a PersistentClient (see
     # app/core/vector_store.py) — there is no separate Chroma server, so no

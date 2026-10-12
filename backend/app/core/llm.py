@@ -29,6 +29,9 @@ def _is_retryable(exc: Exception) -> bool:
     # 5xx server errors from OpenRouter itself
     if isinstance(exc, APIStatusError) and exc.status_code >= 500:
         return True
+    # Models that don't support tool-calling return this; treat as model-switch signal
+    if "model output must contain" in err_str:
+        return True
     return False
 
 
@@ -54,14 +57,23 @@ def _extract_json(text: str) -> dict:
         # Also handle trailing newlines before closing fence
         text = text.rstrip("`").strip()
 
-    # Try to find a JSON object within the text (handle leading prose)
-    brace_start = text.find("{")
-    brace_end = text.rfind("}")
-    if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
-        text = text[brace_start:brace_end + 1]
+    import re
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fence_match:
+        text = fence_match.group(1)
+    else:
+        brace_start = text.find("{")
+        brace_end = text.rfind("}")
+        if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+            text = text[brace_start:brace_end + 1]
 
     import json
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Try repairing trailing commas before closing braces/brackets
+        cleaned = re.sub(r",\s*([\]}])", r"\1", text)
+        return json.loads(cleaned)
 
 
 def _invoke_with_retry(llm: ChatOpenAI, prompt_or_messages, input_data: dict = None, max_retries: int = 3):
@@ -75,6 +87,7 @@ def _invoke_with_retry(llm: ChatOpenAI, prompt_or_messages, input_data: dict = N
 
     Returns: parsed JSON dict from the LLM response.
     """
+    import json
     from langchain_core.messages import BaseMessage
 
     def _invoke(llm_instance):
@@ -101,42 +114,60 @@ def _invoke_with_retry(llm: ChatOpenAI, prompt_or_messages, input_data: dict = N
                     time.sleep(wait)
                 else:
                     logger.warning(f"Retries exhausted after {max_retries} attempts. Trying fallback model...")
-            elif "OutputParserException" in type(e).__name__ or "JSON" in str(e).upper():
-                # JSON parse failures are often model-specific; retry can help
+            elif isinstance(e, (json.JSONDecodeError, ValueError, TypeError)) or "JSON" in type(e).__name__.upper() or "JSON" in str(e).upper() or "EXPECTING VALUE" in str(e).upper():
+                # JSON parse failures or None content from models -> retry or fallback
                 last_error = e
                 if attempt < max_retries:
                     wait = 1.0 + random.uniform(0, 0.5)
-                    logger.warning(f"JSON parse error (attempt {attempt}/{max_retries}): {e!s:.120} — retrying...")
+                    logger.warning(f"Output parse/format error (attempt {attempt}/{max_retries}): {e!s:.120} — retrying...")
                     time.sleep(wait)
                 else:
-                    logger.warning(f"JSON parse retries exhausted. Trying fallback model...")
+                    logger.warning(f"Format retries exhausted. Trying fallback model...")
+                    break
             else:
                 err_text = str(e).lower()
-                if any(x in err_text for x in ["404", "not found", "unavailable", "deprecated"]):
-                    logger.warning(f"Model unavailable ({e!s:.120}) — switching to fallback model {settings.MODEL_FALLBACK}...")
+                if any(x in err_text for x in ["404", "not found", "unavailable", "deprecated", "rate", "429", "nonetype", "not iterable", "choices", "agentic"]):
+                    logger.warning(f"Model error ({e!s:.120}) — switching to fallback models...")
                     break
                 # Non-transient error (auth, malformed request, etc.) — don't retry
                 logger.error(f"Non-retryable LLM error: {e!s:.120}")
                 raise
 
-    # Fallback: try the fallback model with its own error handling
-    logger.info(f"Falling back to {settings.MODEL_FALLBACK}")
-    fallback_llm = ChatOpenAI(
-        model=settings.MODEL_FALLBACK,
-        openai_api_key=settings.OPENROUTER_API_KEY,
-        openai_api_base=settings.OPENROUTER_BASE_URL,
-        temperature=0.1,
-        timeout=60.0,
-        default_headers={
-            "HTTP-Referer": "https://repohawk.app",
-            "X-Title": "RepoHawk",
-        },
-    )
-    try:
-        return _invoke(fallback_llm)
-    except Exception as fallback_err:
-        logger.error(f"Fallback model also failed: {fallback_err}")
-        raise
+    # Fallback: try reliable fallback models sequentially
+    fallback_models = [
+        settings.MODEL_FALLBACK,
+        "mistralai/mistral-nemo",
+        "nex-agi/nex-n2.5-mini:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "nex-agi/nex-n2.5-pro:free",
+        "cohere/north-mini-code:free",
+    ]
+    # Remove duplicates preserving order
+    seen = set()
+    unique_fallbacks = [m for m in fallback_models if m and not (m in seen or seen.add(m))]
+
+    for f_model in unique_fallbacks:
+        logger.info(f"Trying fallback model {f_model}")
+        try:
+            fallback_llm = ChatOpenAI(
+                model=f_model,
+                openai_api_key=settings.OPENROUTER_API_KEY,
+                openai_api_base=settings.OPENROUTER_BASE_URL,
+                temperature=0.1,
+                timeout=60.0,
+                max_retries=0,
+                default_headers={
+                    "HTTP-Referer": "https://repohawk.app",
+                    "X-Title": "RepoHawk",
+                },
+            )
+            return _invoke(fallback_llm)
+        except Exception as fallback_err:
+            logger.warning(f"Fallback model {f_model} failed: {fallback_err!s:.120}. Trying next...")
+            last_error = fallback_err
+
+    logger.error("All fallback models failed.")
+    raise last_error or RuntimeError("LLM invocation failed across all primary and fallback models.")
 
 
 def invoke_with_fallback(llm: ChatOpenAI, messages, max_retries: int = 3):
@@ -158,27 +189,37 @@ def invoke_with_fallback(llm: ChatOpenAI, messages, max_retries: int = 3):
                 else:
                     logger.warning(f"Retries exhausted after {max_retries} attempts. Trying fallback models...")
             else:
+                err_str = str(e).lower()
+                # Non-tool-calling models or empty-output errors — switch model immediately
+                if any(x in err_str for x in ["model output must contain", "404", "not found", "unavailable", "deprecated"]):
+                    logger.warning(f"Model capability error ({e!s:.120}) — switching to fallback models immediately...")
+                    last_error = e
+                    break
                 logger.error(f"Non-retryable LLM error: {e!s:.120}")
                 raise
 
     # Fallback chain of free models (ordered by empirical reliability on OpenRouter)
     fallback_models = [
-        settings.MODEL_DIAGRAM,       # Same model, already loaded in router
-        "nvidia/nemotron-3-nano-30b-a3b:free",  # Fast (~2s), reliable
-        "google/gemma-4-26b-a4b-it:free",        # Good quality, moderate speed
-        "meta-llama/llama-3.3-70b-instruct:free", # Strong, sometimes rate-limited
+        getattr(llm, "model_name", None) or settings.MODEL_DIAGRAM,
+        settings.MODEL_FALLBACK,
+        "nex-agi/nex-n2.5-mini:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "nex-agi/nex-n2.5-pro:free",
+        "cohere/north-mini-code:free",
     ]
+    seen = set()
+    unique_fallbacks = [m for m in fallback_models if m and not (m in seen or seen.add(m))]
 
-    for model_name in fallback_models:
+    for model_name in unique_fallbacks:
         logger.info(f"LLM Fallback: Trying model {model_name}...")
         try:
             fallback_llm = ChatOpenAI(
                 model=model_name,
                 openai_api_key=settings.OPENROUTER_API_KEY,
                 openai_api_base=settings.OPENROUTER_BASE_URL,
-                temperature=llm.temperature,
+                temperature=getattr(llm, "temperature", 0.2),
                 timeout=60.0,
-                default_headers=llm.default_headers,
+                default_headers=getattr(llm, "default_headers", None),
             )
             return fallback_llm.invoke(messages)
         except Exception as fallback_err:
@@ -208,6 +249,7 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.2, timeout: floa
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=temperature,
         timeout=timeout,
+        max_retries=0,
         default_headers={
             "HTTP-Referer": "https://repohawk.app",
             "X-Title": "RepoHawk",
@@ -216,23 +258,37 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.2, timeout: floa
 
 
 # Pre-configured clients for each agent role
-def get_chat_llm() -> ChatOpenAI:
-    """Q&A Agent — fast model with good code understanding.
-    Timeout 30s: free-tier models that stall >30s are unlikely to recover."""
+# Each factory checks its per-agent LLM_PROVIDER_* setting so you can mix
+# Bedrock and OpenRouter models in the same running instance.
+
+def get_chat_llm():
+    """Q&A Agent. Routes to Bedrock when LLM_PROVIDER_CHAT=bedrock."""
+    if settings.LLM_PROVIDER_CHAT == "bedrock":
+        from app.core.bedrock import get_bedrock_llm
+        return get_bedrock_llm("chat")
     return get_llm(model=settings.MODEL_CHAT, temperature=0.1, timeout=30.0)
 
 
-def get_rewrite_llm() -> ChatOpenAI:
-    """Query Rewriting — cheap fast model (nemotron-3-nano-30b). Short response, plain text output.
+def get_rewrite_llm():
+    """Query Rewriting. Routes to Bedrock when LLM_PROVIDER_REWRITE=bedrock.
     Separate from get_chat_llm so we don't burn the main model token budget on rewrites."""
+    if settings.LLM_PROVIDER_REWRITE == "bedrock":
+        from app.core.bedrock import get_bedrock_llm
+        return get_bedrock_llm("rewrite")
     return get_llm(model=settings.MODEL_REWRITE, temperature=0.0, timeout=15.0)
 
 
-def get_diagram_llm() -> ChatOpenAI:
-    """Architect Agent — strong reasoning model for architecture diagram generation"""
+def get_diagram_llm():
+    """Architect Agent. Routes to Bedrock when LLM_PROVIDER_DIAGRAM=bedrock."""
+    if settings.LLM_PROVIDER_DIAGRAM == "bedrock":
+        from app.core.bedrock import get_bedrock_llm
+        return get_bedrock_llm("diagram")
     return get_llm(model=settings.MODEL_DIAGRAM, temperature=0.1, timeout=60.0)
 
 
-def get_critique_llm() -> ChatOpenAI:
-    """Critique Agent — strong reasoning for diagram quality assessment"""
+def get_critique_llm():
+    """Critique Agent. Routes to Bedrock when LLM_PROVIDER_CRITIQUE=bedrock."""
+    if settings.LLM_PROVIDER_CRITIQUE == "bedrock":
+        from app.core.bedrock import get_bedrock_llm
+        return get_bedrock_llm("critique")
     return get_llm(model=settings.MODEL_CRITIQUE, temperature=0.0, timeout=30.0)
